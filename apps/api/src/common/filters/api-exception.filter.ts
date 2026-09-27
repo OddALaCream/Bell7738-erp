@@ -22,7 +22,15 @@ const STATUS_CODE_MAP: Record<number, string> = {
 };
 
 function isApiErrorBody(value: unknown): value is ApiErrorBody {
-  return typeof value === 'object' && value !== null && 'error' in value;
+  if (typeof value !== 'object' || value === null || !('error' in value))
+    return false;
+  const { error } = value as { error: unknown };
+  // NestJS's built-in HttpException subclasses also put an `error` key on
+  // their default body (e.g. `new ForbiddenException('msg')` yields
+  // `{ message, error: 'Forbidden', statusCode }`), but there it's a plain
+  // string description, not our { code, message } shape. Only ApiException's
+  // own body has an object here, so that's what distinguishes the two.
+  return typeof error === 'object' && error !== null && 'code' in error;
 }
 
 /**

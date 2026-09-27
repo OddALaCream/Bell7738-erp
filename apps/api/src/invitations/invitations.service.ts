@@ -1,8 +1,6 @@
 import { randomBytes, createHash } from 'node:crypto';
 import {
-  BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -61,44 +59,6 @@ export class InvitationsService {
     return `${this.config.app.webOrigin}/accept-invitation#token=${rawToken}`;
   }
 
-  /**
-   * docs/RBAC.md anti-escalation: an inviter can only grant roles whose
-   * permissions are within their own effective set (Owner bypasses this).
-   * Also doubles as existence validation for roleIds — a nonexistent UUID
-   * would otherwise only surface as an unhandled FK-violation 500 later.
-   */
-  private async assertCanGrantRoles(
-    roleIds: string[],
-    actor: AuthenticatedUser,
-  ): Promise<void> {
-    if (roleIds.length === 0) return;
-
-    const roles = await this.prisma.role.findMany({
-      where: { id: { in: roleIds } },
-      select: {
-        id: true,
-        rolePermissions: { select: { permission: { select: { key: true } } } },
-      },
-    });
-    if (roles.length !== roleIds.length) {
-      throw new BadRequestException('One or more roleIds do not exist.');
-    }
-
-    if (actor.isOwner) return;
-
-    const actorPermissions =
-      await this.effectivePermissions.getEffectivePermissionKeys(actor.id);
-    for (const role of roles) {
-      for (const rolePermission of role.rolePermissions) {
-        if (!actorPermissions.has(rolePermission.permission.key)) {
-          throw new ForbiddenException(
-            'Cannot grant a role containing a permission you do not hold.',
-          );
-        }
-      }
-    }
-  }
-
   async create(dto: CreateInvitationDto, actor: AuthenticatedUser) {
     const email = normalizeEmail(dto.email);
     const existing = await this.prisma.user.findUnique({ where: { email } });
@@ -106,7 +66,10 @@ export class InvitationsService {
       throw new ConflictException();
     }
 
-    await this.assertCanGrantRoles(dto.roleIds, actor);
+    await this.effectivePermissions.assertRolesExistAndActorCanGrant(
+      dto.roleIds,
+      actor,
+    );
 
     const rawToken = generateRawToken();
     const expiresAt = new Date(

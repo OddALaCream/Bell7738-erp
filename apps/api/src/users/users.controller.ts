@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -16,6 +17,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { PermissionsGuard } from '../rbac/permissions.guard.js';
 import { RequirePermissions } from '../rbac/require-permissions.decorator.js';
+import { RolesService } from '../rbac/roles.service.js';
+import { AssignRolesDto } from '../rbac/dto/assign-roles.dto.js';
 import { UsersService } from './users.service.js';
 import { ListUsersDto } from './dto/list-users.dto.js';
 import { ListTeamDto } from './dto/list-team.dto.js';
@@ -25,7 +28,10 @@ import { UpdateProfileDto } from './dto/update-profile.dto.js';
 @Controller({ version: '1' })
 @UseGuards(SessionAuthGuard, PermissionsGuard)
 export class UsersController {
-  constructor(private readonly users: UsersService) {}
+  constructor(
+    private readonly users: UsersService,
+    private readonly roles: RolesService,
+  ) {}
 
   @Get('users')
   @RequirePermissions('USERS_VIEW')
@@ -77,6 +83,19 @@ export class UsersController {
     @CurrentUser() actor: AuthenticatedUser,
   ) {
     return this.users.disable(userId, actor.id);
+  }
+
+  @Put('users/:userId/roles')
+  @RequirePermissions('USERS_ROLES_MANAGE')
+  @HttpCode(HttpStatus.OK)
+  assignRoles(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() dto: AssignRolesDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.roles
+      .assignRolesToUser(userId, dto.roleIds, actor)
+      .then(() => this.users.getById(userId));
   }
 
   @Get('users/:userId/profile')

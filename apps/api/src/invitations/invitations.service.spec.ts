@@ -1,20 +1,10 @@
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
 import { InvitationsService } from './invitations.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { AppConfigService } from '../config/app-config.service.js';
 import type { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 
-const owner: AuthenticatedUser = {
-  id: 'owner-1',
-  email: 'owner@example.com',
-  isOwner: true,
-  sessionId: 's1',
-};
 const admin: AuthenticatedUser = {
   id: 'admin-1',
   email: 'admin@example.com',
@@ -24,17 +14,12 @@ const admin: AuthenticatedUser = {
 
 function makeService(overrides?: {
   existingUser?: unknown;
-  roles?: Array<{
-    id: string;
-    rolePermissions: Array<{ permission: { key: string } }>;
-  }>;
-  actorPermissions?: Set<string>;
+  assertRolesRejects?: Error;
 }) {
   const prisma = {
     user: {
       findUnique: vi.fn().mockResolvedValue(overrides?.existingUser ?? null),
     },
-    role: { findMany: vi.fn().mockResolvedValue(overrides?.roles ?? []) },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) =>
       fn({
         user: { create: vi.fn().mockResolvedValue({ id: 'new-user-1' }) },
@@ -65,10 +50,14 @@ function makeService(overrides?: {
     app: { webOrigin: 'http://localhost:5173' },
   } as unknown as AppConfigService;
 
+  // The anti-escalation/existence check itself is unit-tested directly in
+  // effective-permissions.service.spec.ts — here we only verify
+  // InvitationsService actually calls it and reacts to its outcome.
+  const assertRolesExistAndActorCanGrant = overrides?.assertRolesRejects
+    ? vi.fn().mockRejectedValue(overrides.assertRolesRejects)
+    : vi.fn().mockResolvedValue(undefined);
   const effectivePermissions = {
-    getEffectivePermissionKeys: vi
-      .fn()
-      .mockResolvedValue(overrides?.actorPermissions ?? new Set()),
+    assertRolesExistAndActorCanGrant,
   } as unknown as EffectivePermissionsService;
 
   return {
@@ -78,7 +67,7 @@ function makeService(overrides?: {
   };
 }
 
-describe('InvitationsService.create — role anti-escalation', () => {
+describe('InvitationsService.create', () => {
   const dto = {
     email: 'new@example.com',
     firstName: 'New',
@@ -86,68 +75,32 @@ describe('InvitationsService.create — role anti-escalation', () => {
     roleIds: ['role-1'],
   };
 
-  it('rejects a nonexistent roleId with a validation error, not a raw FK failure', async () => {
-    const { service } = makeService({ roles: [] });
-    await expect(service.create(dto, admin)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-  });
-
-  it("rejects a non-owner granting a role whose permissions exceed the actor's own", async () => {
-    const { service } = makeService({
-      roles: [
-        {
-          id: 'role-1',
-          rolePermissions: [{ permission: { key: 'USERS_DISABLE' } }],
-        },
-      ],
-      actorPermissions: new Set(['USERS_CREATE']),
-    });
-    await expect(service.create(dto, admin)).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
-  });
-
-  it('allows a non-owner granting a role whose permissions are a subset of their own', async () => {
-    const { service } = makeService({
-      roles: [
-        {
-          id: 'role-1',
-          rolePermissions: [{ permission: { key: 'USERS_CREATE' } }],
-        },
-      ],
-      actorPermissions: new Set(['USERS_CREATE', 'USERS_VIEW']),
-    });
-    await expect(service.create(dto, admin)).resolves.toBeDefined();
-  });
-
-  it('lets the Owner grant any existing role regardless of their own effective permissions', async () => {
-    const { service, effectivePermissions } = makeService({
-      roles: [
-        {
-          id: 'role-1',
-          rolePermissions: [{ permission: { key: 'USERS_DISABLE' } }],
-        },
-      ],
-    });
-    await expect(service.create(dto, owner)).resolves.toBeDefined();
-    expect(
-      effectivePermissions.getEffectivePermissionKeys,
-    ).not.toHaveBeenCalled();
-  });
-
-  it('skips the role check entirely when roleIds is empty', async () => {
-    const { service, prisma } = makeService();
-    await expect(
-      service.create({ ...dto, roleIds: [] }, admin),
-    ).resolves.toBeDefined();
-    expect(prisma.role.findMany).not.toHaveBeenCalled();
-  });
-
   it('rejects inviting an email that already belongs to a user', async () => {
     const { service } = makeService({ existingUser: { id: 'existing-1' } });
     await expect(
       service.create({ ...dto, roleIds: [] }, admin),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('delegates role validation/anti-escalation to EffectivePermissionsService before creating anything', async () => {
+    const { service, effectivePermissions, prisma } = makeService();
+    await service.create(dto, admin);
+    expect(
+      effectivePermissions.assertRolesExistAndActorCanGrant,
+    ).toHaveBeenCalledWith(['role-1'], admin);
+    expect(prisma.$transaction).toHaveBeenCalled();
+  });
+
+  it('propagates a rejection from the anti-escalation check without creating the user', async () => {
+    const rejection = new Error('nope');
+    const { service, prisma } = makeService({ assertRolesRejects: rejection });
+    await expect(service.create(dto, admin)).rejects.toBe(rejection);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('includes a manualLink in the response (no mailer implemented yet)', async () => {
+    const { service } = makeService();
+    const result = await service.create({ ...dto, roleIds: [] }, admin);
+    expect(result.manualLink).toContain('#token=');
   });
 });

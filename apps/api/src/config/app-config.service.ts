@@ -40,6 +40,12 @@ export class AppConfigService {
     };
   }
 
+  get projects() {
+    return {
+      endingSoonDays: this.get('PROJECTS_ENDING_SOON_DAYS'),
+    };
+  }
+
   get owner() {
     return {
       email: this.get('OWNER_EMAIL'),

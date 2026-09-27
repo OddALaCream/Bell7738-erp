@@ -16,3 +16,12 @@ export const ProjectRole = {
   VIEWER: 'VIEWER',
 } as const;
 export type ProjectRole = (typeof ProjectRole)[keyof typeof ProjectRole];
+
+export const ProjectStatus = {
+  PLANNED: 'PLANNED',
+  ACTIVE: 'ACTIVE',
+  PAUSED: 'PAUSED',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+} as const;
+export type ProjectStatus = (typeof ProjectStatus)[keyof typeof ProjectStatus];

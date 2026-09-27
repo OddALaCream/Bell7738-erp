@@ -24,6 +24,7 @@ export const envSchema = z
     REFRESH_TOKEN_TTL: z.string().min(1).default('7d'),
     COOKIE_SECURE: booleanFromString.optional(),
     INVITATION_TTL_HOURS: z.coerce.number().int().positive().default(72),
+    PROJECTS_ENDING_SOON_DAYS: z.coerce.number().int().positive().default(7),
 
     OWNER_EMAIL: z.email().optional(),
     OWNER_PASSWORD: z.string().min(12).optional(),

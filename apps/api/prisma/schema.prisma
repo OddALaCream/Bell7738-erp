@@ -1,0 +1,16 @@
+// Domain models are introduced in Phase 3 (docs/DATABASE.md). This file
+// currently only wires up the generator and datasource so migrations,
+// the generated client, and health checks work end to end.
+
+generator client {
+  provider               = "prisma-client"
+  engineType             = "client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}

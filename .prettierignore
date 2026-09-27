@@ -2,6 +2,7 @@
 **/build
 **/coverage
 **/node_modules
+apps/api/src/generated
 pnpm-lock.yaml
 
 # Hand-authored documentation predating the scaffold: not reformatted to avoid

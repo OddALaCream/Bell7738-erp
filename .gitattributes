@@ -1,0 +1,7 @@
+# Files consumed inside Linux containers must keep LF endings regardless of
+# a Windows checkout's core.autocrlf, or they fail with "$'\r': command not
+# found" (shell scripts) or similar parse errors.
+*.sh text eol=lf
+Dockerfile text eol=lf
+Caddyfile text eol=lf
+docker-entrypoint.sh text eol=lf

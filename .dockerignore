@@ -1,0 +1,17 @@
+**/node_modules
+**/dist
+**/build
+**/coverage
+**/.turbo
+.git
+.github
+.claude
+.agents
+agent-skills
+docs
+*.log
+.env
+.env.*
+!.env.example
+apps/api/uploads
+apps/api/src/generated

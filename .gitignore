@@ -1,3 +1,34 @@
 # Generated copies of agent-skills/
 .agents/skills/
 .claude/skills/
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+apps/web/dist/
+*.tsbuildinfo
+
+# Test / coverage
+coverage/
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+pnpm-debug.log*
+
+# Uploads (local dev persistence volume)
+apps/api/uploads/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+

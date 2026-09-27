@@ -1,0 +1,12 @@
+**/dist
+**/build
+**/coverage
+**/node_modules
+pnpm-lock.yaml
+
+# Hand-authored documentation predating the scaffold: not reformatted to avoid
+# unrelated diffs on files this workflow doesn't own.
+AGENTS.md
+docs/
+agent-skills/
+

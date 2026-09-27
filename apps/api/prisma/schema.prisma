@@ -1,6 +1,9 @@
-// Domain models are introduced in Phase 3 (docs/DATABASE.md). This file
-// currently only wires up the generator and datasource so migrations,
-// the generated client, and health checks work end to end.
+// Domain model per docs/DATABASE.md. Column names use Prisma's camelCase
+// convention (the doc explicitly allows this as long as invariants hold).
+// Constraints Prisma cannot express (partial unique indexes, CHECKs, a
+// case-insensitive unique on Role.name) are added as raw SQL appended to the
+// generated migration — see the migration.sql file and the comments below
+// pointing to it.
 
 generator client {
   provider               = "prisma-client"
@@ -13,4 +16,464 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum ProjectStatus {
+  PLANNED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum ProjectMemberRole {
+  MANAGER
+  MEMBER
+  VIEWER
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  MEETING_ADDED
+  MEETING_UPDATED
+  MEETING_REMINDER_24H
+  MEETING_REMINDER_1H
+}
+
+// ---------------------------------------------------------------------------
+// Identidad y acceso
+// ---------------------------------------------------------------------------
+
+model User {
+  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email            String     @unique
+  passwordHash     String?
+  firstName        String
+  lastName         String
+  avatarStorageKey String?
+  status           UserStatus
+  isOwner          Boolean    @default(false)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  lastLoginAt      DateTime?
+
+  invitation               Invitation?          @relation("InvitationUser")
+  sentInvitations          Invitation[]         @relation("InvitationInvitedBy")
+  sessions                 Session[]
+  userRoles                UserRole[]           @relation("UserRoleUser")
+  assignedUserRoles        UserRole[]           @relation("UserRoleAssignedBy")
+  createdProjects          Project[]            @relation("ProjectCreatedBy")
+  deletedProjects          Project[]            @relation("ProjectDeletedBy")
+  projectMemberships       ProjectMember[]      @relation("ProjectMemberUser")
+  addedProjectMembers      ProjectMember[]      @relation("ProjectMemberAddedBy")
+  createdTasks             Task[]               @relation("TaskCreatedBy")
+  deletedTasks             Task[]               @relation("TaskDeletedBy")
+  taskAssignments          TaskAssignee[]       @relation("TaskAssigneeUser")
+  assignedTaskAssignments  TaskAssignee[]       @relation("TaskAssigneeAssignedBy")
+  organizedMeetings        Meeting[]            @relation("MeetingOrganizer")
+  notesUpdatedMeetings     Meeting[]            @relation("MeetingNotesUpdatedBy")
+  deletedMeetings          Meeting[]            @relation("MeetingDeletedBy")
+  meetingParticipations    MeetingParticipant[] @relation("MeetingParticipantUser")
+  addedMeetingParticipants MeetingParticipant[] @relation("MeetingParticipantAddedBy")
+  uploadedDocuments        Document[]           @relation("DocumentUploadedBy")
+  deletedDocuments         Document[]           @relation("DocumentDeletedBy")
+  notifications            Notification[]       @relation("NotificationUser")
+  actorNotifications       Notification[]       @relation("NotificationActor")
+  activityEvents           ActivityEvent[]      @relation("ActivityEventActor")
+  auditLogs                AuditLog[]           @relation("AuditLogActor")
+
+  // Raw SQL in the migration adds:
+  //   - a partial unique index on (isOwner) WHERE isOwner = true
+  //   - CHECK (NOT isOwner OR status = 'ACTIVE')
+  //   - CHECK (status <> 'ACTIVE' OR passwordHash IS NOT NULL)
+  @@index([status, createdAt])
+  @@map("users")
+}
+
+model Session {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @db.Uuid
+  refreshTokenHash String    @unique
+  userAgent        String?   @db.VarChar(512)
+  ip               String?   @db.Inet
+  createdAt        DateTime  @default(now())
+  lastActivityAt   DateTime  @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Invitation {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @unique @db.Uuid
+  tokenHash   String    @unique
+  invitedById String    @db.Uuid
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  user            User             @relation("InvitationUser", fields: [userId], references: [id], onDelete: Restrict)
+  invitedBy       User             @relation("InvitationInvitedBy", fields: [invitedById], references: [id], onDelete: Restrict)
+  invitationRoles InvitationRole[]
+
+  @@map("invitations")
+}
+
+model InvitationRole {
+  invitationId String @db.Uuid
+  roleId       String @db.Uuid
+
+  invitation Invitation @relation(fields: [invitationId], references: [id], onDelete: Restrict)
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([invitationId, roleId])
+  @@map("invitation_roles")
+}
+
+model Role {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  // No @unique here: uniqueness is case-insensitive, enforced by a raw-SQL
+  // functional index on lower(name) in the migration (Prisma can't express
+  // expression indexes natively).
+  name        String
+  description String?
+  color       String   @db.VarChar(7)
+  position    Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  invitationRoles InvitationRole[]
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  // Raw SQL in the migration also adds CHECK (color ~ '^#[0-9A-Fa-f]{6}$').
+  @@map("roles")
+}
+
+model Permission {
+  id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String @unique
+  description String
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId       String   @db.Uuid
+  roleId       String   @db.Uuid
+  assignedById String?  @db.Uuid
+  createdAt    DateTime @default(now())
+
+  user       User  @relation("UserRoleUser", fields: [userId], references: [id], onDelete: Restrict)
+  role       Role  @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  assignedBy User? @relation("UserRoleAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String   @db.Uuid
+  permissionId String   @db.Uuid
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ---------------------------------------------------------------------------
+// Proyectos y trabajo
+// ---------------------------------------------------------------------------
+
+model Project {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  description     String?
+  clientName      String?
+  status          ProjectStatus
+  startDate       DateTime?     @db.Date
+  expectedEndDate DateTime?     @db.Date
+  completedAt     DateTime?
+  createdById     String        @db.Uuid
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+  deletedById     String?       @db.Uuid
+
+  createdBy User  @relation("ProjectCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  deletedBy User? @relation("ProjectDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+
+  members        ProjectMember[]
+  tasks          Task[]
+  meetings       Meeting[]
+  documents      Document[]
+  notifications  Notification[]
+  activityEvents ActivityEvent[]
+
+  // Raw SQL in the migration adds:
+  //   - CHECK (expectedEndDate IS NULL OR startDate IS NULL OR expectedEndDate >= startDate)
+  //   - CHECK ((status = 'COMPLETED') = (completedAt IS NOT NULL))
+  @@index([status, expectedEndDate])
+  @@index([createdAt])
+  @@map("projects")
+}
+
+model ProjectMember {
+  projectId String            @db.Uuid
+  userId    String            @db.Uuid
+  role      ProjectMemberRole
+  addedById String            @db.Uuid
+  joinedAt  DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  removedAt DateTime?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  user    User    @relation("ProjectMemberUser", fields: [userId], references: [id], onDelete: Restrict)
+  addedBy User    @relation("ProjectMemberAddedBy", fields: [addedById], references: [id], onDelete: Restrict)
+
+  @@id([projectId, userId])
+  @@index([userId, removedAt])
+  @@index([projectId, role, removedAt])
+  @@map("project_members")
+}
+
+model Task {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId   String     @db.Uuid
+  title       String
+  description String?
+  startDate   DateTime   @db.Date
+  dueDate     DateTime   @db.Date
+  status      TaskStatus
+  createdById String     @db.Uuid
+  completedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  deletedAt   DateTime?
+  deletedById String?    @db.Uuid
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  createdBy User    @relation("TaskCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  deletedBy User?   @relation("TaskDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+
+  assignees     TaskAssignee[]
+  notifications Notification[]
+
+  // Raw SQL in the migration adds:
+  //   - CHECK (dueDate >= startDate)
+  //   - CHECK ((status = 'DONE') = (completedAt IS NOT NULL))
+  @@index([projectId, status, dueDate])
+  @@index([projectId, startDate, dueDate])
+  @@index([createdAt])
+  @@map("tasks")
+}
+
+model TaskAssignee {
+  taskId       String   @db.Uuid
+  userId       String   @db.Uuid
+  assignedById String   @db.Uuid
+  assignedAt   DateTime @default(now())
+
+  task       Task @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  user       User @relation("TaskAssigneeUser", fields: [userId], references: [id], onDelete: Restrict)
+  assignedBy User @relation("TaskAssigneeAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
+
+  @@id([taskId, userId])
+  @@index([userId, taskId])
+  @@map("task_assignees")
+}
+
+// ---------------------------------------------------------------------------
+// Reuniones y notas
+// ---------------------------------------------------------------------------
+
+model Meeting {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId        String    @db.Uuid
+  title            String
+  description      String?
+  startsAt         DateTime
+  endsAt           DateTime
+  organizerId      String    @db.Uuid
+  notes            Json?
+  revision         Int       @default(1)
+  notesUpdatedAt   DateTime?
+  notesUpdatedById String?   @db.Uuid
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  deletedById      String?   @db.Uuid
+
+  project        Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  organizer      User    @relation("MeetingOrganizer", fields: [organizerId], references: [id], onDelete: Restrict)
+  notesUpdatedBy User?   @relation("MeetingNotesUpdatedBy", fields: [notesUpdatedById], references: [id], onDelete: SetNull)
+  deletedBy      User?   @relation("MeetingDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+
+  participants  MeetingParticipant[]
+  reminders     MeetingReminder[]
+  notifications Notification[]
+
+  // Raw SQL in the migration adds:
+  //   - CHECK (endsAt > startsAt)
+  //   - CHECK (revision > 0)
+  @@index([projectId, startsAt])
+  @@index([organizerId, startsAt])
+  @@index([projectId, deletedAt, startsAt])
+  @@map("meetings")
+}
+
+model MeetingParticipant {
+  meetingId String   @db.Uuid
+  userId    String   @db.Uuid
+  addedById String   @db.Uuid
+  addedAt   DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Restrict)
+  user    User    @relation("MeetingParticipantUser", fields: [userId], references: [id], onDelete: Restrict)
+  addedBy User    @relation("MeetingParticipantAddedBy", fields: [addedById], references: [id], onDelete: Restrict)
+
+  @@id([meetingId, userId])
+  @@index([userId, meetingId])
+  @@map("meeting_participants")
+}
+
+model MeetingReminder {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  meetingId     String    @db.Uuid
+  offsetMinutes Int
+  scheduledFor  DateTime
+  deliveredAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Restrict)
+
+  // Raw SQL in the migration adds: CHECK (offsetMinutes > 0).
+  @@unique([meetingId, offsetMinutes])
+  @@index([deliveredAt, scheduledFor])
+  @@map("meeting_reminders")
+}
+
+// ---------------------------------------------------------------------------
+// Documentos
+// ---------------------------------------------------------------------------
+
+model Document {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId      String    @db.Uuid
+  originalName   String
+  storageKey     String    @unique
+  mimeType       String
+  size           BigInt
+  checksumSha256 String?
+  uploadedById   String    @db.Uuid
+  createdAt      DateTime  @default(now())
+  deletedAt      DateTime?
+  deletedById    String?   @db.Uuid
+
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  uploadedBy User    @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  deletedBy  User?   @relation("DocumentDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+
+  // Raw SQL in the migration adds: CHECK (size >= 0).
+  @@index([projectId, createdAt])
+  @@index([uploadedById, createdAt])
+  @@map("documents")
+}
+
+// ---------------------------------------------------------------------------
+// Notificaciones
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String           @db.Uuid
+  type      NotificationType
+  actorId   String?          @db.Uuid
+  projectId String?          @db.Uuid
+  taskId    String?          @db.Uuid
+  meetingId String?          @db.Uuid
+  payload   Json?
+  dedupeKey String?          @unique
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user    User     @relation("NotificationUser", fields: [userId], references: [id], onDelete: Restrict)
+  actor   User?    @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  task    Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  meeting Meeting? @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+
+  @@index([userId, readAt, createdAt])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// Actividad y auditoría (append-only: no update/delete endpoints)
+// ---------------------------------------------------------------------------
+
+model ActivityEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId  String   @db.Uuid
+  actorId    String?  @db.Uuid
+  type       String
+  entityType String
+  entityId   String?  @db.Uuid
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  actor   User?   @relation("ActivityEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt(sort: Desc)])
+  @@map("activity_events")
+}
+
+model AuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorId    String?  @db.Uuid
+  action     String
+  entityType String?
+  entityId   String?  @db.Uuid
+  requestId  String?
+  ip         String?  @db.Inet
+  userAgent  String?  @db.VarChar(512)
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation("AuditLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)])
+  @@index([entityType, entityId, createdAt(sort: Desc)])
+  @@map("audit_logs")
 }

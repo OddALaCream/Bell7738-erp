@@ -62,8 +62,16 @@ afterAll(async () => {
 
 describe('User constraints', () => {
   it('allows only one Owner (partial unique index on isOwner)', async () => {
-    const firstOwner = await createUser({ isOwner: true });
-    createdUserIds.push(firstOwner.id);
+    // Deliberately doesn't assume the DB starts with zero Owners — a real
+    // dev database almost always already has one after Owner bootstrap. If
+    // this is a pristine database instead, the first attempt succeeds, so
+    // fall through to proving a *second* one is rejected either way.
+    try {
+      const owner = await createUser({ isOwner: true });
+      createdUserIds.push(owner.id);
+    } catch (error) {
+      expect(String(error)).toMatch(/users_single_owner_key/);
+    }
 
     await expect(createUser({ isOwner: true })).rejects.toThrow(
       /users_single_owner_key/,

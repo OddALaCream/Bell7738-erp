@@ -1,11 +1,17 @@
 import {
+  HttpStatus,
   INestApplication,
   RequestMethod,
   ValidationPipe,
   VersioningType,
 } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 import { AppConfigService } from './config/app-config.service.js';
+import { ApiException } from './common/exceptions.js';
+import { ApiExceptionFilter } from './common/filters/api-exception.filter.js';
+import { ResponseInterceptor } from './common/interceptors/response.interceptor.js';
+import { requestIdMiddleware } from './common/middleware/request-id.middleware.js';
 
 /**
  * Shared app configuration applied both by the real bootstrap (main.ts) and
@@ -21,6 +27,8 @@ export function configureApp(app: INestApplication): void {
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
   app.enableCors({ origin: config.app.webOrigin, credentials: true });
+  app.use(cookieParser());
+  app.use(requestIdMiddleware);
 
   app.setGlobalPrefix('api', {
     exclude: [
@@ -36,8 +44,27 @@ export function configureApp(app: INestApplication): void {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      exceptionFactory: (errors) => {
+        const details = errors.flatMap((error) => {
+          const constraints = error.constraints ?? {};
+          return Object.entries(constraints).map(([code, message]) => ({
+            field: error.property,
+            code,
+            message,
+          }));
+        });
+        return new ApiException(
+          HttpStatus.BAD_REQUEST,
+          'VALIDATION_ERROR',
+          'The request is invalid.',
+          details,
+        );
+      },
     }),
   );
+
+  app.useGlobalFilters(new ApiExceptionFilter());
+  app.useGlobalInterceptors(new ResponseInterceptor());
 
   app.enableShutdownHooks();
 

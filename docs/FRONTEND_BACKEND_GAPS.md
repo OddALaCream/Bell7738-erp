@@ -204,3 +204,66 @@ opt-in UI (nothing to prompt for, no permission banners), and the in-app bell
 plus `/notifications` are the only channel, as the docs require to always work.
 Once the backend exposes `POST/DELETE /notifications/push-subscription`, the
 opt-in belongs in `/profile` and the service worker's `push` handler.
+
+## `GET /api/v1/dashboard` does not exist
+
+`docs/API.md` documents `GET /dashboard` (permission `DASHBOARD_VIEW`) returning
+bounded sections: pending tasks, upcoming meetings, active projects, recent
+activity and a team summary. There is no dashboard module in `apps/api`, no
+`DASHBOARD_VIEW` permission, and no other endpoint returning these together.
+
+**Frontend workaround:** `/` composes each block from endpoints that do exist,
+each as its own query so one failure only replaces that block:
+- *Mis tareas* — `GET /me/schedule?kind=task&status=PENDING|IN_PROGRESS`,
+  overdue first, then by due date (`features/dashboard/logic.ts`).
+- *Próximas reuniones* — `GET /me/schedule?kind=meeting` for the next 30 days,
+  dropping ones already over.
+- *Proyectos activos* — `GET /projects?view=active` (what the RBAC scope lets the
+  user see; for an org-wide admin that is every active project, not only
+  "mine").
+- *Actividad reciente* — see the next item.
+- *Equipo* — `GET /team?pageSize=8` (no role badges, see the roles gap above).
+
+**Suggested backend fix:** implement `GET /dashboard` as documented so the
+client can render it in one request and "mis proyectos" can mean memberships.
+
+## Activity: no cross-project feed, and no readable text or actor name
+
+`GET /projects/:id/activity` is the only activity endpoint and returns
+`{ id, projectId, actorId, type, entityType, entityId, metadata, createdAt }`:
+no actor name, no message, and `metadata` carries a title/name only for
+creations (`TASK_CREATED.title`, `DOCUMENT_UPLOADED.originalName`,
+`PROJECT_CREATED.name`).
+
+**Frontend workaround:** the sentence is composed per `type`
+(`features/activity/describe.ts`, covered by tests), actor names come from
+`GET /team` plus the project's members, and events about deleted subjects render
+as plain history without a link. The dashboard's "actividad reciente" reads the
+latest 5 events of up to 4 active projects and merges them — a bounded fan-out
+of 4 requests, not a real feed.
+
+**Suggested backend fix:** include `actor: { id, firstName, lastName }` and a
+`subjectLabel` (task title, meeting title…) in each event, and add a
+cross-project `GET /activity` (or a `recentActivity` section in the dashboard).
+
+## Profiles return empty roles, projects and tasks
+
+`UsersService.getOwnProfile` / `getPublicProfile` spread a hardcoded
+`EMPTY_PROFILE_EXTRAS` (`roles`, `activeProjects`, `pastProjects`,
+`activeTasks`, `completedTasks` are always `[]`), although `docs/API.md` and
+`docs/PRODUCT.md` require them (scoped to what the observer may see).
+
+**Frontend workaround:**
+- *Own profile* is built from real data: tasks from `GET /me/schedule?kind=task`
+  (active vs `DONE`), projects from `GET /projects` (active/planned/paused vs
+  completed/cancelled). It lists what the user can *see*, which for an org-wide
+  admin is broader than memberships. Roles cannot be shown (see the roles gap).
+- *Another person's profile* can only show what the server returns. While every
+  list is empty the page says the server does not report them yet, rather than
+  claiming "no projects"; the note disappears on its own once any list has data.
+- The Owner gets a link from another person's profile to `/admin/users` to manage
+  roles (the assign-roles dialog itself lives there, with its replace-all warning).
+
+**Suggested backend fix:** fill the profile lists using the observer-scoped
+project/task queries, and return role summaries `{ id, name, color }` instead of
+strings.

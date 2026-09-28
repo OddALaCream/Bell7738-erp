@@ -229,27 +229,42 @@ export interface Notification {
   createdAt: string;
 }
 
+export type ActivityEventType =
+  | 'PROJECT_CREATED'
+  | 'PROJECT_UPDATED'
+  | 'PROJECT_DELETED'
+  | 'PROJECT_MEMBER_ADDED'
+  | 'PROJECT_MEMBER_ROLE_CHANGED'
+  | 'PROJECT_MEMBER_REMOVED'
+  | 'TASK_CREATED'
+  | 'TASK_UPDATED'
+  | 'TASK_COMPLETED'
+  | 'TASK_REOPENED'
+  | 'TASK_DELETED'
+  | 'TASK_ASSIGNEES_CHANGED'
+  | 'MEETING_CREATED'
+  | 'MEETING_UPDATED'
+  | 'MEETING_PARTICIPANTS_CHANGED'
+  | 'MEETING_NOTES_UPDATED'
+  | 'MEETING_DELETED'
+  | 'DOCUMENT_UPLOADED'
+  | 'DOCUMENT_DELETED';
+
+/**
+ * Matches ACTIVITY_SELECT in apps/api/src/activity/activity.service.ts: no
+ * actor name and no readable message — text is composed client-side from
+ * `type` + `metadata` (see docs/FRONTEND_BACKEND_GAPS.md).
+ */
 export interface ActivityEvent {
   id: string;
   projectId: string;
-  type: string;
   actorId: string | null;
-  actor?: Pick<UserSummary, 'firstName' | 'lastName'>;
-  message: string;
-  createdAt: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface AuditLogEntry {
-  id: string;
-  actorId: string | null;
-  action: string;
+  type: ActivityEventType;
   entityType: string;
   entityId: string | null;
+  metadata: Record<string, unknown> | null;
   createdAt: string;
-  metadata?: Record<string, unknown>;
 }
-
 export type CalendarItem =
   | {
       kind: 'task';
@@ -268,11 +283,3 @@ export type CalendarItem =
       start: string;
       end: string;
     };
-
-export interface DashboardData {
-  tasks: Task[];
-  upcomingMeetings: Meeting[];
-  activeProjects: ProjectSummary[];
-  recentActivity: ActivityEvent[];
-  team: AdminUser[];
-}

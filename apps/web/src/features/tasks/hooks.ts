@@ -27,6 +27,7 @@ function invalidateTasks(queryClient: ReturnType<typeof useQueryClient>, project
   queryClient.invalidateQueries({ queryKey: ['dashboard'] });
   queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'timeline'] });
   queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'calendar'] });
+  queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'activity'] });
 }
 
 export function useCreateTask(projectId: string) {

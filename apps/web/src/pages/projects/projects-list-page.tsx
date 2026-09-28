@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { FolderKanban, Plus } from 'lucide-react';
 import { useSetBreadcrumb } from '@/components/layout/breadcrumb-context';
 import { QueryState } from '@/components/common/query-state';
@@ -33,7 +33,6 @@ const VIEWS: Array<{ value: NonNullable<ListProjectsParams['view']> | 'all'; lab
 
 export function ProjectsListPage() {
   useSetBreadcrumb('Proyectos');
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -120,23 +119,21 @@ export function ProjectsListPage() {
         {(data) => (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {data.data.map((project) => (
-              <Card
-                key={project.id}
-                className="cursor-pointer transition-colors hover:bg-accent"
-                onClick={() => navigate(`/projects/${project.id}/overview`)}
-              >
-                <CardContent className="space-y-2 py-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="truncate font-medium">{project.name}</p>
-                    <ProjectStatusBadge status={project.status} />
-                  </div>
-                  {project.clientName && <p className="text-sm text-muted-foreground">{project.clientName}</p>}
-                  <p className="text-xs text-muted-foreground">
-                    {project.startDate ? formatDateOnly(project.startDate) : 'Sin inicio'} —{' '}
-                    {project.expectedEndDate ? formatDateOnly(project.expectedEndDate) : 'sin fecha límite'}
-                  </p>
-                </CardContent>
-              </Card>
+              <Link key={project.id} to={`/projects/${project.id}/overview`} className="block rounded-lg">
+                <Card className="h-full transition-colors hover:bg-accent">
+                  <CardContent className="space-y-2 py-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="truncate font-medium">{project.name}</p>
+                      <ProjectStatusBadge status={project.status} />
+                    </div>
+                    {project.clientName && <p className="text-sm text-muted-foreground">{project.clientName}</p>}
+                    <p className="text-xs text-muted-foreground">
+                      {project.startDate ? formatDateOnly(project.startDate) : 'Sin inicio'} —{' '}
+                      {project.expectedEndDate ? formatDateOnly(project.expectedEndDate) : 'sin fecha límite'}
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
             ))}
           </div>
         )}

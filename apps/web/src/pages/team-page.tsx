@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Users } from 'lucide-react';
 import { useSetBreadcrumb } from '@/components/layout/breadcrumb-context';
 import { useTeam } from '@/features/users/hooks';
@@ -14,7 +14,6 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value';
 
 export function TeamPage() {
   useSetBreadcrumb('Equipo');
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -64,18 +63,16 @@ export function TeamPage() {
         {(data) => (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {data.data.map((member) => (
-              <Card
-                key={member.id}
-                className="cursor-pointer transition-colors hover:bg-accent"
-                onClick={() => navigate(`/users/${member.id}/profile`)}
-              >
-                <CardContent className="flex items-center gap-3 py-4">
-                  <UserAvatar firstName={member.firstName} lastName={member.lastName} className="size-10" />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{fullName(member)}</p>
-                  </div>
-                </CardContent>
-              </Card>
+              <Link key={member.id} to={`/users/${member.id}/profile`} className="block rounded-lg">
+                <Card className="transition-colors hover:bg-accent">
+                  <CardContent className="flex items-center gap-3 py-4">
+                    <UserAvatar firstName={member.firstName} lastName={member.lastName} className="size-10" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{fullName(member)}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
             ))}
           </div>
         )}

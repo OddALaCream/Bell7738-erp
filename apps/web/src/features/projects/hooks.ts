@@ -77,6 +77,7 @@ export function useAddProjectMember(projectId: string) {
       api.addProjectMember(projectId, userId, role),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: projectKeys.members(projectId) });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'activity'] });
       toast.success('Miembro añadido.');
     },
   });
@@ -89,6 +90,7 @@ export function useUpdateProjectMemberRole(projectId: string) {
       api.updateProjectMemberRole(projectId, userId, role),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: projectKeys.members(projectId) });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'activity'] });
       toast.success('Rol actualizado.');
     },
   });
@@ -100,6 +102,7 @@ export function useRemoveProjectMember(projectId: string) {
     mutationFn: (userId: string) => api.removeProjectMember(projectId, userId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: projectKeys.members(projectId) });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'activity'] });
       toast.success('Miembro retirado.');
     },
   });

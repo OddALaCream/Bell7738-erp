@@ -23,7 +23,7 @@ import { ProjectTimelinePage } from '@/pages/projects/project-timeline-page';
 import { ProjectCalendarPage } from '@/pages/projects/project-calendar-page';
 import { ProjectMeetingsPage } from '@/pages/projects/project-meetings-page';
 import { ProjectDocumentsPage } from '@/pages/projects/project-documents-page';
-import { ProjectTabPlaceholder } from '@/pages/projects/project-tab-placeholder';
+import { ProjectActivityPage } from '@/pages/projects/project-activity-page';
 
 export const router = createBrowserRouter([
   {
@@ -57,7 +57,7 @@ export const router = createBrowserRouter([
           { path: 'meetings', element: <ProjectMeetingsPage /> },
           { path: 'documents', element: <ProjectDocumentsPage /> },
           { path: 'members', element: <ProjectMembersPage /> },
-          { path: 'activity', element: <ProjectTabPlaceholder tab="Actividad" /> },
+          { path: 'activity', element: <ProjectActivityPage /> },
         ],
       },
       { path: 'team', element: <TeamPage /> },

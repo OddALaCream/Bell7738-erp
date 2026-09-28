@@ -158,10 +158,18 @@ characters and builds a *local* date from them. `new Date(value)` must not be
 used for display: in a UTC-negative zone the `T00:00:00Z` instant renders as
 the previous day (covered by `lib/dates.test.ts`, pinned to UTC−5).
 
-## Notes format for Tiptap (meetings)
+## Notes format for Tiptap (meetings) — confirmed, no action needed
 
-`docs/ARCHITECTURE.md` says meeting notes are "JSON estructurado". The
-frontend assumes this is a Tiptap/ProseMirror JSON document
-(`{ type: 'doc', content: [...] }`) matching what Tiptap's `editor.getJSON()`
-produces, and sends/receives it verbatim as `notes`. If the backend expects
-a different shape (e.g. HTML string) this needs reconciling.
+`UpdateMeetingNotesDto.notes` is validated only with `@IsObject()` and stored
+as `Json`, so the frontend sends and reads Tiptap's `editor.getJSON()`
+(`{ type: 'doc', content: [...] }`) verbatim. Notes are `null` until the
+first save; `revision` starts at `1` (`expectedRevision` is `@Min(1)`).
+
+## `REVISION_CONFLICT` says *when*, not *who*
+
+`docs/UI-UX.md` asks the conflict UI to say "quién/cuándo modificó si la API
+dispone de esa información". The `409` body carries `currentRevision` and
+`updatedAt` (the notes' `notesUpdatedAt`) but not the author, although the
+row stores `notesUpdatedById`. The conflict panel therefore shows the
+revision number and time only. **Suggested backend fix (optional):** include
+the last editor's `{ id, firstName, lastName }` in the conflict body.

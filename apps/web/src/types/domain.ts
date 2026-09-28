@@ -148,21 +148,18 @@ export interface Task {
   updatedAt: string;
 }
 
+/** Matches MEETING_SELECT in apps/api/src/meetings/meetings.service.ts. */
 export interface MeetingParticipant {
-  id: string;
-  firstName: string;
-  lastName: string;
-  avatarStorageKey: string | null;
+  userId: string;
+  addedAt: string;
+  user: Pick<UserSummary, 'id' | 'firstName' | 'lastName' | 'email' | 'avatarStorageKey'>;
 }
 
-export interface MeetingCapabilities {
-  canEditMeeting: boolean;
-  canEditNotes: boolean;
-  canDelete: boolean;
-  canManageParticipants: boolean;
-}
+/** Tiptap/ProseMirror document JSON (`editor.getJSON()`); the API stores any JSON object. */
+export type MeetingNotes = Record<string, unknown>;
 
-export interface MeetingSummary {
+/** A meeting as returned by the list and by every write. Notes start `null` at revision 1. */
+export interface Meeting {
   id: string;
   projectId: string;
   title: string;
@@ -170,16 +167,28 @@ export interface MeetingSummary {
   startsAt: string;
   endsAt: string;
   organizerId: string;
+  notes: MeetingNotes | null;
+  revision: number;
+  notesUpdatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
   participants: MeetingParticipant[];
 }
 
-export interface MeetingDetail extends MeetingSummary {
-  notes: Record<string, unknown> | null;
-  revision: number;
-  updatedAt: string;
-  capabilities: MeetingCapabilities;
+export interface MeetingViewerCapabilities {
+  role: ProjectRole | null;
+  isOrganizer: boolean;
+  isParticipant: boolean;
+  /** Title, agenda, schedule and participants. */
+  canEditStructure: boolean;
+  canEditNotes: boolean;
+  canDelete: boolean;
 }
 
+/** `GET .../meetings/:id` — the only response that carries `viewerCapabilities`. */
+export interface MeetingDetail extends Meeting {
+  viewerCapabilities: MeetingViewerCapabilities;
+}
 export interface ProjectDocument {
   id: string;
   projectId: string;
@@ -259,7 +268,7 @@ export type CalendarItem =
 
 export interface DashboardData {
   tasks: Task[];
-  upcomingMeetings: MeetingSummary[];
+  upcomingMeetings: Meeting[];
   activeProjects: ProjectSummary[];
   recentActivity: ActivityEvent[];
   team: AdminUser[];

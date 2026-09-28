@@ -28,6 +28,10 @@ export interface ApiErrorBody {
     message: string;
     details?: ApiErrorDetail[];
     requestId?: string;
+    /** `REVISION_CONFLICT` only: the revision that won (docs/API.md "Concurrencia"). */
+    currentRevision?: number;
+    /** `REVISION_CONFLICT` only: when the winning revision was saved. */
+    updatedAt?: string | null;
   };
 }
 
@@ -52,6 +56,8 @@ export class ApiError extends Error {
   readonly status: number;
   readonly details?: ApiErrorDetail[];
   readonly requestId?: string;
+  readonly currentRevision?: number;
+  readonly updatedAt?: string | null;
 
   constructor(status: number, body: ApiErrorBody['error']) {
     super(body.message);
@@ -60,6 +66,12 @@ export class ApiError extends Error {
     this.status = status;
     this.details = body.details;
     this.requestId = body.requestId;
+    this.currentRevision = body.currentRevision;
+    this.updatedAt = body.updatedAt;
+  }
+
+  get isRevisionConflict(): boolean {
+    return this.status === 409 && this.code === 'REVISION_CONFLICT';
   }
 
   fieldMessage(field: string): string | undefined {

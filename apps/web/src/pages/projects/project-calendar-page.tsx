@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
+import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { QueryErrorState } from '@/components/common/query-state';
 import { useProjectMembers } from '@/features/projects/hooks';
+import { MeetingDetailSheet } from '@/features/meetings/meeting-detail-sheet';
 import { useProjectCalendar, type DateRange } from '@/features/schedule/hooks';
 import { CalendarView, type SelectedCalendarItem, type VisibleRange } from '@/features/schedule/calendar-view';
 import { TaskDetailSheet } from '@/features/tasks/task-detail-sheet';
@@ -9,7 +10,6 @@ import type { ProjectDetail } from '@/types/domain';
 
 export function ProjectCalendarPage() {
   const project = useOutletContext<ProjectDetail>();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const membersQuery = useProjectMembers(project.id);
 
@@ -21,15 +21,11 @@ export function ProjectCalendarPage() {
     setRange((current) => (current && current.from === from && current.to === to ? current : { from, to }));
   }
 
+  // Tasks and meetings each open their shared detail sheet in place, keeping the visible month.
   function handleSelect(item: SelectedCalendarItem) {
-    if (item.kind === 'task') {
-      const params = new URLSearchParams(searchParams);
-      params.set('taskId', item.id);
-      setSearchParams(params, { replace: true });
-    } else {
-      // The meeting detail lives with the Reuniones tab.
-      navigate(`/projects/${item.projectId}/meetings?meetingId=${item.id}`);
-    }
+    const params = new URLSearchParams(searchParams);
+    params.set(item.kind === 'task' ? 'taskId' : 'meetingId', item.id);
+    setSearchParams(params, { replace: true });
   }
 
   return (
@@ -44,6 +40,7 @@ export function ProjectCalendarPage() {
       />
 
       <TaskDetailSheet projectId={project.id} members={membersQuery.data ?? []} projectRole={project.viewerCapabilities.role} />
+      <MeetingDetailSheet projectId={project.id} members={membersQuery.data ?? []} />
     </div>
   );
 }

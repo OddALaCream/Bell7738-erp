@@ -67,6 +67,11 @@ export function instantToLocalDay(instant: string): string {
   return localDateOnly(new Date(instant));
 }
 
+/** Whether an instant is already behind us (evaluated at call time). */
+export function isPastInstant(instant: string): boolean {
+  return Date.parse(instant) < Date.now();
+}
+
 export function formatTime(instant: string): string {
   return new Date(instant).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
 }

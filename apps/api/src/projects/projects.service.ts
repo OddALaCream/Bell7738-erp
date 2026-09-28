@@ -9,6 +9,7 @@ import { AppConfigService } from '../config/app-config.service.js';
 import { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
 import { ProjectAccessService } from './project-access.service.js';
 import { paginate, type PaginatedResult } from '../common/pagination.js';
+import { toDateOrNull, toDateOrUndefined } from '../common/dates.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import type { CreateProjectDto } from './dto/create-project.dto.js';
 import type { UpdateProjectDto } from './dto/update-project.dto.js';
@@ -158,8 +159,8 @@ export class ProjectsService {
           description: dto.description,
           clientName: dto.clientName,
           status: dto.status,
-          startDate: dto.startDate,
-          expectedEndDate: dto.expectedEndDate,
+          startDate: toDateOrUndefined(dto.startDate),
+          expectedEndDate: toDateOrUndefined(dto.expectedEndDate),
           completedAt,
           createdById: actor.id,
         },
@@ -222,9 +223,11 @@ export class ProjectsService {
           ? { description: dto.description }
           : {}),
         ...(dto.clientName !== undefined ? { clientName: dto.clientName } : {}),
-        ...(dto.startDate !== undefined ? { startDate: dto.startDate } : {}),
+        ...(dto.startDate !== undefined
+          ? { startDate: toDateOrNull(dto.startDate) }
+          : {}),
         ...(dto.expectedEndDate !== undefined
-          ? { expectedEndDate: dto.expectedEndDate }
+          ? { expectedEndDate: toDateOrNull(dto.expectedEndDate) }
           : {}),
         ...statusFields,
       },

@@ -61,26 +61,22 @@ function makeService(overrides?: {
   } as unknown as EffectivePermissionsService;
 
   const access = {
-    assertCanViewProject: vi
-      .fn()
-      .mockResolvedValue(
-        overrides?.project ?? {
-          id: 'proj-1',
-          startDate: null,
-          expectedEndDate: null,
-          completedAt: null,
-          status: 'ACTIVE',
-        },
-      ),
+    assertCanViewProject: vi.fn().mockResolvedValue(
+      overrides?.project ?? {
+        id: 'proj-1',
+        startDate: null,
+        expectedEndDate: null,
+        completedAt: null,
+        status: 'ACTIVE',
+      },
+    ),
     canManageProject: vi.fn().mockResolvedValue(overrides?.canManage ?? true),
-    getViewerCapabilities: vi
-      .fn()
-      .mockResolvedValue({
-        role: 'MANAGER',
-        canUpdate: true,
-        canDelete: true,
-        canManageMembers: true,
-      }),
+    getViewerCapabilities: vi.fn().mockResolvedValue({
+      role: 'MANAGER',
+      canUpdate: true,
+      canDelete: true,
+      canManageMembers: true,
+    }),
   } as unknown as ProjectAccessService;
 
   return {

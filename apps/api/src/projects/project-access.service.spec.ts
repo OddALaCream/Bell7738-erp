@@ -164,3 +164,72 @@ describe('ProjectAccessService.canManageProject', () => {
     ).resolves.toBe(false);
   });
 });
+
+describe('ProjectAccessService.hasMemberLevelAccess', () => {
+  it('always allows the Owner', async () => {
+    const { service } = makeService();
+    await expect(
+      service.hasMemberLevelAccess(owner, 'proj-1', 'TASKS_CREATE'),
+    ).resolves.toBe(true);
+  });
+
+  it('denies a non-owner lacking the specific permission entirely', async () => {
+    const { service } = makeService({
+      effectiveKeys: new Set(),
+      membership: { role: 'MEMBER' },
+    });
+    await expect(
+      service.hasMemberLevelAccess(member, 'proj-1', 'TASKS_CREATE'),
+    ).resolves.toBe(false);
+  });
+
+  it('allows a non-owner with the permission and PROJECTS_VIEW_ALL override, without membership', async () => {
+    const { service } = makeService({
+      effectiveKeys: new Set(['TASKS_CREATE', 'PROJECTS_VIEW_ALL']),
+      membership: null,
+    });
+    await expect(
+      service.hasMemberLevelAccess(member, 'proj-1', 'TASKS_CREATE'),
+    ).resolves.toBe(true);
+  });
+
+  it('allows a non-owner with the permission and a MEMBER membership', async () => {
+    const { service } = makeService({
+      effectiveKeys: new Set(['TASKS_CREATE']),
+      membership: { role: 'MEMBER' },
+    });
+    await expect(
+      service.hasMemberLevelAccess(member, 'proj-1', 'TASKS_CREATE'),
+    ).resolves.toBe(true);
+  });
+
+  it('allows a non-owner with the permission and a MANAGER membership', async () => {
+    const { service } = makeService({
+      effectiveKeys: new Set(['TASKS_CREATE']),
+      membership: { role: 'MANAGER' },
+    });
+    await expect(
+      service.hasMemberLevelAccess(member, 'proj-1', 'TASKS_CREATE'),
+    ).resolves.toBe(true);
+  });
+
+  it('denies a non-owner with the permission but only a VIEWER membership and no override', async () => {
+    const { service } = makeService({
+      effectiveKeys: new Set(['TASKS_CREATE']),
+      membership: { role: 'VIEWER' },
+    });
+    await expect(
+      service.hasMemberLevelAccess(member, 'proj-1', 'TASKS_CREATE'),
+    ).resolves.toBe(false);
+  });
+
+  it('denies a non-owner with the permission but no membership and no override', async () => {
+    const { service } = makeService({
+      effectiveKeys: new Set(['TASKS_CREATE']),
+      membership: null,
+    });
+    await expect(
+      service.hasMemberLevelAccess(member, 'proj-1', 'TASKS_CREATE'),
+    ).resolves.toBe(false);
+  });
+});

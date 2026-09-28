@@ -33,11 +33,9 @@ function makeService(overrides?: {
 
   const tx = {
     project: {
-      findUnique: vi
-        .fn()
-        .mockResolvedValue({
-          deletedAt: overrides?.projectDeleted ? new Date() : null,
-        }),
+      findUnique: vi.fn().mockResolvedValue({
+        deletedAt: overrides?.projectDeleted ? new Date() : null,
+      }),
     },
     projectMember: {
       findUnique: vi

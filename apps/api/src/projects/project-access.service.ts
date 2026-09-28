@@ -93,6 +93,29 @@ export class ProjectAccessService {
     return membership?.role === 'MANAGER';
   }
 
+  /**
+   * docs/RBAC.md's repeated "creation" shape across resources ("TASKS_CREATE
+   * y rol MEMBER o MANAGER, o override"; same for MEETINGS_CREATE and
+   * DOCUMENTS_UPLOAD): the specific permission plus being an active MEMBER
+   * or MANAGER of the project, or the PROJECTS_VIEW_ALL override.
+   */
+  async hasMemberLevelAccess(
+    actor: AuthenticatedUser,
+    projectId: string,
+    permissionKey: string,
+  ): Promise<boolean> {
+    if (actor.isOwner) return true;
+
+    const keys = await this.effectivePermissions.getEffectivePermissionKeys(
+      actor.id,
+    );
+    if (!keys.has(permissionKey)) return false;
+    if (keys.has('PROJECTS_VIEW_ALL')) return true;
+
+    const membership = await this.getActiveMembership(actor.id, projectId);
+    return membership?.role === 'MEMBER' || membership?.role === 'MANAGER';
+  }
+
   /** docs/RBAC.md "La API puede devolver permisos efectivos y membresía/rol del proyecto". */
   async getViewerCapabilities(
     actor: AuthenticatedUser,

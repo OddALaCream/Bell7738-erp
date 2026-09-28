@@ -189,17 +189,20 @@ export interface MeetingViewerCapabilities {
 export interface MeetingDetail extends Meeting {
   viewerCapabilities: MeetingViewerCapabilities;
 }
+/** Matches DOCUMENT_SELECT in apps/api/src/documents/documents.service.ts (never the storage path). */
 export interface ProjectDocument {
   id: string;
   projectId: string;
-  fileName: string;
-  contentType: string;
+  originalName: string;
+  /** Canonical, server-derived MIME type (not the client's). */
+  mimeType: string;
+  /** Bytes. */
   size: number;
-  uploaderId: string;
-  uploader?: Pick<UserSummary, 'firstName' | 'lastName'>;
+  checksumSha256: string;
+  /** Only the id: the API returns no uploader name (see docs/FRONTEND_BACKEND_GAPS.md). */
+  uploadedById: string;
   createdAt: string;
 }
-
 export type NotificationType =
   | 'TASK_ASSIGNED'
   | 'MEETING_ADDED'

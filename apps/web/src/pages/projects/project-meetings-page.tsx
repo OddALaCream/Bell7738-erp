@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useOutletContext, useSearchParams } from 'react-router-dom';
-import { CalendarClock, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { CalendarClock, Plus } from 'lucide-react';
 import { EmptyState } from '@/components/common/empty-state';
+import { Pagination } from '@/components/common/pagination';
 import { QueryState } from '@/components/common/query-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -180,30 +181,11 @@ export function ProjectMeetingsPage() {
               })}
             </ul>
 
-            {data.meta.totalPages > 1 && (
-              <nav aria-label="Paginación" className="flex items-center justify-between gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={page <= 1}
-                  onClick={() => updateParams({ page: page - 1 > 1 ? String(page - 1) : undefined })}
-                >
-                  <ChevronLeft /> Anterior
-                </Button>
-                <p className="text-xs text-muted-foreground">
-                  Página {data.meta.page} de {data.meta.totalPages}
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={page >= data.meta.totalPages}
-                  onClick={() => updateParams({ page: String(page + 1) })}
-                >
-                  Siguiente <ChevronRight />
-                </Button>
-              </nav>
-            )}
-          </div>
+            <Pagination
+              page={page}
+              totalPages={data.meta.totalPages}
+              onPageChange={(next) => updateParams({ page: next > 1 ? String(next) : undefined })}
+            />          </div>
         )}
       </QueryState>
 

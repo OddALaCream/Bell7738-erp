@@ -173,3 +173,23 @@ dispone de esa información". The `409` body carries `currentRevision` and
 row stores `notesUpdatedById`. The conflict panel therefore shows the
 revision number and time only. **Suggested backend fix (optional):** include
 the last editor's `{ id, firstName, lastName }` in the conflict body.
+
+## Upload limits are server config and not exposed
+
+`docs/UI-UX.md` wants size/type limits "visibles antes de enviar". The limits
+(`MAX_UPLOAD_BYTES`, `DOCUMENT_ALLOWED_EXTENSIONS`) are backend env vars read by
+`AppConfigService`; no endpoint returns them. **Frontend workaround:**
+`VITE_MAX_UPLOAD_BYTES` and `VITE_DOCUMENT_ALLOWED_EXTENSIONS` (defaults equal
+to the backend's `.env.example`; see `apps/web/.env.example`) feed the drop
+zone hint and an early per-file check. If the two drift, the only cost is a
+file rejected by the server (its `413`/`415` is shown per file) or one blocked
+early. **Suggested backend fix:** expose them, e.g. in `GET /auth/me` or a small
+`GET /config` (`{ maxUploadBytes, allowedExtensions }`).
+
+## Documents have no uploader name
+
+`DOCUMENT_SELECT` returns `uploadedById` only. `docs/UI-UX.md` lists
+"uploader" in the documents list. **Frontend workaround:** the name is
+resolved from the project's members; an uploader who is no longer a member
+shows as "un usuario que ya no es miembro". **Suggested backend fix:** include
+`uploadedBy: { id, firstName, lastName }` in the document summary.

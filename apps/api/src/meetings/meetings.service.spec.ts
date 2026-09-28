@@ -67,7 +67,15 @@ function makeService(overrides?: {
 
   const tx = {
     $queryRaw: txProjectQueryRaw,
+    meetingReminder: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn(),
+    },
     meeting: {
+      updateMany: vi
+        .fn()
+        .mockResolvedValue({ count: overrides?.updateManyCount ?? 1 }),
       create: meetingCreate,
       findFirst: txMeetingFindFirst,
       findUniqueOrThrow: txMeetingFindUniqueOrThrow,
@@ -92,9 +100,7 @@ function makeService(overrides?: {
         .mockResolvedValue(
           overrides?.meeting !== undefined ? overrides.meeting : baseMeeting,
         ),
-      updateMany: vi
-        .fn()
-        .mockResolvedValue({ count: overrides?.updateManyCount ?? 1 }),
+      updateMany: tx.meeting.updateMany,
     },
     user: {
       findMany: vi

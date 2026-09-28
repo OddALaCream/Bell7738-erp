@@ -6,6 +6,7 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
 import { ActivityModule } from '../activity/activity.module.js';
 import { MeetingsController } from './meetings.controller.js';
 import { MeetingsService } from './meetings.service.js';
+import { MeetingRemindersService } from './meeting-reminders.service.js';
 
 @Module({
   imports: [
@@ -16,6 +17,6 @@ import { MeetingsService } from './meetings.service.js';
     ActivityModule,
   ],
   controllers: [MeetingsController],
-  providers: [MeetingsService],
+  providers: [MeetingsService, MeetingRemindersService],
 })
 export class MeetingsModule {}

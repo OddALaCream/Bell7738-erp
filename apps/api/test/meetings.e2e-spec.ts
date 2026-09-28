@@ -155,6 +155,9 @@ describe('Meetings (e2e)', () => {
     await prisma.meetingParticipant.deleteMany({
       where: { meeting: { projectId: { in: createdProjectIds } } },
     });
+    await prisma.meetingReminder.deleteMany({
+      where: { meeting: { projectId: { in: createdProjectIds } } },
+    });
     await prisma.meeting.deleteMany({
       where: { projectId: { in: createdProjectIds } },
     });
@@ -504,7 +507,12 @@ describe('Meetings (e2e)', () => {
         })
         .expect(200);
       expect(res.body.data.revision).toBe(2);
-      expect(res.body.data.notes).toEqual({ text: 'hello' });
+      expect(res.body.data.notes).toEqual({
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'hello' }] },
+        ],
+      });
     });
 
     it('returns 409 REVISION_CONFLICT with the current revision on a stale expectedRevision', async () => {

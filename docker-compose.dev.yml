@@ -8,7 +8,9 @@ services:
     # Host ports in the 5432 range collide with other local Postgres
     # instances/forwarders on some dev machines; 55432 avoids that.
     ports:
-      - '55432:5432'
+      - '127.0.0.1:55432:5432'
+    environment:
+      APP_DB_ALLOW_CREATEDB: 'true'
   api:
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'

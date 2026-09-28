@@ -1,6 +1,9 @@
 #!/bin/sh
 set -e
 
-./node_modules/.bin/prisma migrate deploy
-
-exec node dist/main.js
+case "${1:-}" in
+  --migrate) exec ./node_modules/.bin/prisma migrate deploy ;;
+  --seed) exec node dist-seed/prisma/seed.js ;;
+  "") exec node dist/main.js ;;
+  *) exec "$@" ;;
+esac

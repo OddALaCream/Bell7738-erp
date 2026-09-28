@@ -204,7 +204,7 @@ Para cambios críticos, el registro de negocio y su evento durable se escriben e
 
 ## Recordatorios persistentes
 
-`@nestjs/schedule` registra cron jobs al iniciar la instancia de aplicación. El cron sólo despierta el proceso; PostgreSQL conserva el trabajo real.
+La API despierta un poller cada 30 segundos mediante el ciclo de vida de NestJS y un timer no bloqueante, sin dependencias adicionales. PostgreSQL conserva el trabajo real. El timer se detiene y espera la entrega en curso al cerrar la aplicación.
 
 Diseño V1:
 
@@ -213,7 +213,9 @@ Diseño V1:
 3. Una transacción crea la notificación con clave de deduplicación y marca el recordatorio como entregado.
 4. Si la aplicación reinicia, el siguiente ciclo encuentra lo pendiente.
 
-Como existe una sola instancia backend, no hace falta coordinación distribuida. Antes de escalar horizontalmente deberá añadirse un mecanismo de claim/locking compatible con PostgreSQL; no Redis por anticipado.
+La entrega bloquea la fila de reunión y revalida el recordatorio dentro de la misma transacción que crea notificaciones con claves únicas y marca la entrega. Usa el mismo orden de locks que las modificaciones de reuniones. Los reinicios y polls simultáneos no duplican entregas; reprogramar conserva entregas anteriores sólo si no cambia su fecha. Reuniones/proyectos eliminados, usuarios inactivos o participantes sin visibilidad actual no reciben recordatorios. No se envían avisos retroactivos de reuniones ya iniciadas.
+
+La topología V1 sigue siendo una única API. Antes de escalar horizontalmente deben resolverse también storage compartido y rate limiting; no Redis por anticipado.
 
 ## Reuniones y concurrencia optimista
 

@@ -7,6 +7,7 @@ node_modules/
 
 # Build output
 dist/
+dist-seed/
 build/
 apps/web/dist/
 *.tsbuildinfo
@@ -22,6 +23,11 @@ coverage/
 # Logs
 *.log
 pnpm-debug.log*
+
+# Database/document backups contain private business data.
+backups/
+*.dump
+*.tar.gz
 
 # Uploads (local dev persistence volume)
 apps/api/uploads/

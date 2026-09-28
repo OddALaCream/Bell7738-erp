@@ -1,3 +1,9 @@
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
 volumes:
   postgres_data:
   documents:
@@ -8,12 +14,14 @@ services:
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
+    logging: *logging
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      APP_DB_USER: ${APP_DB_USER}
-      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      APP_DB_USER: ${APP_DB_USER:?APP_DB_USER is required}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?APP_DB_PASSWORD is required}
+      APP_DB_ALLOW_CREATEDB: 'false'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -23,16 +31,55 @@ services:
       timeout: 5s
       retries: 10
 
-  api:
+  migrate:
+    image: startup-erp-api:${ERP_IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    restart: unless-stopped
+    restart: 'no'
+    init: true
+    logging: *logging
+    command: ['--migrate']
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      NODE_ENV: ${NODE_ENV}
+      DATABASE_URL: ${DATABASE_MIGRATION_URL:-${DATABASE_URL:?DATABASE_URL is required}}
+
+  seed:
+    profiles: ['bootstrap']
+    image: startup-erp-api:${ERP_IMAGE_TAG:-local}
+    restart: 'no'
+    init: true
+    logging: *logging
+    command: ['--seed']
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      OWNER_EMAIL: ${OWNER_EMAIL:-}
+      OWNER_PASSWORD: ${OWNER_PASSWORD:-}
+      OWNER_FIRST_NAME: ${OWNER_FIRST_NAME:-Owner}
+      OWNER_LAST_NAME: ${OWNER_LAST_NAME:-Account}
+
+  api:
+    image: startup-erp-api:${ERP_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    init: true
+    logging: *logging
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
       PORT: '3000'
       APP_BASE_URL: ${APP_BASE_URL}
       WEB_ORIGIN: ${WEB_ORIGIN}
@@ -47,10 +94,6 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE}
       INVITATION_TTL_HOURS: ${INVITATION_TTL_HOURS}
       PROJECTS_ENDING_SOON_DAYS: ${PROJECTS_ENDING_SOON_DAYS}
-      OWNER_EMAIL: ${OWNER_EMAIL}
-      OWNER_PASSWORD: ${OWNER_PASSWORD}
-      OWNER_FIRST_NAME: ${OWNER_FIRST_NAME}
-      OWNER_LAST_NAME: ${OWNER_LAST_NAME}
       STORAGE_ROOT: /data/documents
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES}
       DOCUMENT_ALLOWED_EXTENSIONS: ${DOCUMENT_ALLOWED_EXTENSIONS}
@@ -77,11 +120,13 @@ services:
       context: .
       dockerfile: deploy/caddy/Dockerfile
     restart: unless-stopped
+    logging: *logging
     depends_on:
       api:
         condition: service_healthy
     environment:
       APP_DOMAIN: ${APP_DOMAIN}
+      MAX_REQUEST_BYTES: ${MAX_REQUEST_BYTES:-27262976}
     ports:
       - '80:80'
       - '443:443'

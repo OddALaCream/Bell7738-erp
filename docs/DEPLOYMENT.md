@@ -2,7 +2,7 @@
 
 ## Alcance
 
-Este documento define el despliegue objetivo de V1 en una única VPS Linux. No autoriza crear Docker Compose, tocar una VPS, publicar imágenes ni desplegar. Es una guía para una tarea futura explícita.
+Este documento define el despliegue de V1 en una única VPS Linux y los procedimientos implementados en el repositorio. Ejecutarlos contra una VPS, publicar imágenes o admitir tráfico requiere autorización operativa explícita; la validación QA sólo usa contenedores locales aislados.
 
 ## Supuestos de V1
 
@@ -149,7 +149,7 @@ El build debe ser reproducible:
 6. Crear imágenes con runtime mínimo y usuario no root.
 7. No incluir fuentes innecesarias, tests, `.git`, secretos ni cache de paquetes en la imagen final.
 
-No se configurará CI/CD hasta una tarea posterior. El mismo orden debe poder ejecutarse manualmente en un entorno de build controlado.
+`.github/workflows/ci.yml` ejecuta instalación congelada, lint, typecheck, tests unitarios/HTTP/persistencia, build y validación Docker con smoke de recuperación. No publica imágenes ni despliega. El mismo orden puede ejecutarse manualmente en un entorno controlado.
 
 ## Caddy
 
@@ -305,3 +305,59 @@ Eso no justifica introducir Redis, Kubernetes o microservicios en V1.
 - storage no expuesto por Caddy;
 - logs redactados y rotados;
 - documentación de despliegue actualizada.
+
+## Desarrollo Windows (PowerShell)
+
+Requisitos: Node 22.22.3, pnpm 12.6.0 (campo `packageManager`), Docker Desktop con contenedores Linux y Compose v2. Usar sólo el proyecto/volumen de desarrollo; las suites HTTP y persistencia escriben fixtures y necesitan una base dedicada, nunca producción.
+
+```powershell
+corepack enable
+pnpm install --frozen-lockfile
+Copy-Item .env.example .env
+Copy-Item apps/api/.env.example apps/api/.env
+# Editar ambas copias: credenciales locales coincidentes y tres secretos diferentes.
+docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --wait postgres
+pnpm --filter api prisma:migrate:deploy
+pnpm --filter api seed
+New-Item -ItemType Directory -Force apps/api/uploads
+pnpm --filter api start:dev
+```
+
+PostgreSQL queda en `127.0.0.1:55432`; `apps/api/.env` usa ese hostname/puerto, no `postgres`. Ejecutar los comandos pnpm desde la raíz (el filtro cambia al directorio API). No reutilizar credenciales de una VPS. `prisma:migrate:dev` es sólo para crear nuevas migraciones en desarrollo; el rol creado en un volumen dev nuevo puede crear la shadow DB. Un volumen inicializado previamente no reejecuta scripts: revisar sus grants expresamente, no borrarlo para cambiar permisos.
+
+Validación: `pnpm verify`; con base QA y Owner sembrado, ejecutar además `pnpm --filter api test:e2e` y `pnpm --filter api test:persistence`. El verify raíz no incluye esas dos suites. Los shell scripts mantienen LF mediante `.gitattributes`. Backup/restore binario debe ejecutarse en Bash Linux/WSL o Git Bash, nunca redireccionar el dump con PowerShell 5.1 (convierte bytes). En Git Bash puede ser necesario `export MSYS2_ARG_CONV_EXCL=/data` para conservar rutas internas Docker.
+
+## Runbook Linux VPS (manual, no ejecutado por CI)
+
+Requisitos: Docker Engine y Compose v2 actuales, Bash, espacio suficiente, DNS/TLS y firewall previamente preparados. No pasar `docker-compose.dev.yml` en producción. Sólo Caddy publica puertos; la API corre no-root, sin capacidades adicionales, con `no-new-privileges` y uploads privados. Logs Docker rotan a 3 archivos de 10 MiB por servicio.
+
+Guardar la copia editada de `.env.example` fuera del checkout, por ejemplo `/etc/erp/erp.env`, con permisos `0600`. Usar contraseñas largas y tres secretos aleatorios diferentes de al menos 32 caracteres; las URLs públicas deben ser HTTPS y `COOKIE_SECURE=true`. Escapar porcentualmente caracteres especiales de la contraseña en `DATABASE_URL`. `APP_DB_USER` debe ser distinto de `POSTGRES_USER`. El rol app no es superuser y no puede crear roles/bases en producción, pero sigue siendo owner de su base/esquema: no equivale a una separación completa entre DDL y runtime. `DATABASE_MIGRATION_URL` permite una credencial de migración separada si los grants se preparan manualmente.
+
+```bash
+docker compose -p erp --env-file /etc/erp/erp.env config --quiet
+docker compose -p erp --env-file /etc/erp/erp.env build api caddy
+# Sólo en primera instalación: usar el perfil explícito de bootstrap.
+docker compose -p erp --env-file /etc/erp/erp.env run --rm migrate
+docker compose -p erp --env-file /etc/erp/erp.env --profile bootstrap run --rm --no-deps seed
+# El servicio migrate debe terminar con éxito antes de iniciar API.
+docker compose -p erp --env-file /etc/erp/erp.env up -d --wait api caddy
+```
+
+El seed compilado funciona dentro de la imagen sin `tsx`; no se ejecuta automáticamente. Después de bootstrap retirar `OWNER_PASSWORD` del archivo y rotar la contraseña del Owner. Esas variables nunca se inyectan en el servicio API persistente. La imagen admite `--migrate` y `--seed`; un arranque/reinicio normal sólo inicia Node. Un fallo de migrate bloquea el arranque dependiente. Para upgrades, hacer backup previo, identificar `ERP_IMAGE_TAG`, ejecutar migrate con la nueva imagen y comprobar readiness antes de admitir tráfico. No ejecutar seed para resetear un Owner existente.
+
+`MAX_REQUEST_BYTES` en Caddy limita la petición multipart completa; debe superar `MAX_UPLOAD_BYTES` con margen (defaults 26 MiB y 25 MiB). Los paths `/api`, `/api/*`, `/health` y `/health/*` nunca reciben fallback SPA. API envía `Cache-Control: no-store`; index y rutas SPA reciben `no-cache`. Readiness comprueba DB/storage; el gate de migraciones lo proporciona Compose, no una consulta a `_prisma_migrations` en cada healthcheck.
+
+## Backup y recuperación implementados
+
+```bash
+bash deploy/backup.sh /etc/erp/erp.env /var/backups/erp erp
+# Restauración exclusivamente aislada, con volúmenes nuevos y API detenida:
+bash deploy/restore.sh /etc/erp/restore.env erp-restore /var/backups/erp/FECHA-ID
+```
+
+`backup.sh` detiene temporalmente la API (también el poller), conserva PostgreSQL activo, crea `database.dump` y `documents.tar.gz`, verifica el formato del dump y escribe `SHA256SUMS` sólo al completar ambos. Un trap reinicia la API si estaba activa, incluso ante error. Programarlo fuera de horas pico; detener también cualquier writer externo. El directorio destino debe ser absoluto y fuera del checkout. No copiar dumps por red sin cifrado. El script no elimina copias ni configura cron/retención; el operador debe implementar backup diario, cifrado, copia externa, alertas, política RPO/RTO y prueba periódica.
+
+`restore.sh` exige proyecto terminado en `-restore`, checksums correctos, base sin tablas públicas, uploads vacíos y API detenida. Rechaza sobrescribir datos, paths no UUID, links y archivos especiales en el tar. Restaura SQL en una única transacción con el rol app y luego los archivos; mantiene la API apagada. Si falla el paso de archivos, no admitir tráfico ni intentar mezclar estados: corregir la causa y repetir en un entorno aislado nuevo. No automatiza borrado ni promoción del recovery.
+
+Después: comprobar `_prisma_migrations`, Owner/RBAC, relaciones y checksum/descarga de documentos, iniciar sólo la API aislada con imagen compatible y verificar `/health/ready`. Revisar login/refresh/logout y pendientes de recordatorios. El archivo de recuperación puede usar otros secretos para invalidar sesiones restauradas; no conectar SMTP/push ni dominio productivo durante el ensayo. No hacer `down --volumes` en producción.

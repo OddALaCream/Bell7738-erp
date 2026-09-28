@@ -66,6 +66,10 @@ export class TasksService {
     const where: Prisma.TaskWhereInput = {
       projectId,
       deletedAt: null,
+      // Re-asserted here (not just via assertCanViewProject above) so a
+      // project soft-deleted in the gap between that check and this query
+      // can't still surface its tasks.
+      project: { deletedAt: null },
       ...(query.status
         ? { status: query.status }
         : query.includeCompleted
@@ -138,10 +142,15 @@ export class TasksService {
     await this.assertValidAssignees(projectId, dto.assigneeIds);
 
     return this.prisma.$transaction(async (tx) => {
-      const project = await tx.project.findUnique({
-        where: { id: projectId },
-        select: { deletedAt: true },
-      });
+      // FOR UPDATE locks the project row for the rest of this transaction:
+      // a concurrent soft-delete's UPDATE needs the same row lock, so it
+      // either committed before us (and we correctly see deletedAt set) or
+      // it blocks until after we commit. A plain read-then-create here
+      // would leave a gap where the project could be deleted in between,
+      // leaving an orphaned-looking task under it.
+      const [project] = await tx.$queryRaw<Array<{ deletedAt: Date | null }>>`
+        SELECT "deletedAt" FROM "projects" WHERE "id" = ${projectId}::uuid FOR UPDATE
+      `;
       if (!project || project.deletedAt) throw new NotFoundException();
 
       const task = await tx.task.create({
@@ -385,8 +394,15 @@ export class TasksService {
     actor: AuthenticatedUser,
   ): Promise<TaskWithAssignees> {
     await this.access.assertCanViewProject(actor, projectId);
+    // `project: { deletedAt: null }` re-asserted here too, not just via
+    // assertCanViewProject above — closes the same narrow gap as list().
     const task = await this.prisma.task.findFirst({
-      where: { id: taskId, projectId, deletedAt: null },
+      where: {
+        id: taskId,
+        projectId,
+        deletedAt: null,
+        project: { deletedAt: null },
+      },
       select: TASK_SELECT,
     });
     if (!task) throw new NotFoundException();

@@ -50,7 +50,7 @@ function makeService(overrides?: {
   const taskCreate = vi.fn().mockResolvedValue({ id: 'task-1' });
   const taskAssigneeCreateMany = vi.fn().mockResolvedValue({ count: 0 });
   const taskAssigneeDeleteMany = vi.fn().mockResolvedValue({ count: 0 });
-  const txProjectFindUnique = vi.fn().mockResolvedValue({ deletedAt: null });
+  const txProjectQueryRaw = vi.fn().mockResolvedValue([{ deletedAt: null }]);
   const txTaskFindFirst = vi
     .fn()
     .mockResolvedValue(
@@ -63,7 +63,7 @@ function makeService(overrides?: {
     );
 
   const tx = {
-    project: { findUnique: txProjectFindUnique },
+    $queryRaw: txProjectQueryRaw,
     task: {
       create: taskCreate,
       findFirst: txTaskFindFirst,

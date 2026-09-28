@@ -19,6 +19,8 @@ import { ProjectLayout } from '@/pages/projects/project-layout';
 import { ProjectOverviewPage } from '@/pages/projects/project-overview-page';
 import { ProjectMembersPage } from '@/pages/projects/project-members-page';
 import { ProjectTasksPage } from '@/pages/projects/project-tasks-page';
+import { ProjectTimelinePage } from '@/pages/projects/project-timeline-page';
+import { ProjectCalendarPage } from '@/pages/projects/project-calendar-page';
 import { ProjectTabPlaceholder } from '@/pages/projects/project-tab-placeholder';
 
 export const router = createBrowserRouter([
@@ -48,8 +50,8 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="overview" replace /> },
           { path: 'overview', element: <ProjectOverviewPage /> },
           { path: 'tasks', element: <ProjectTasksPage /> },
-          { path: 'timeline', element: <ProjectTabPlaceholder tab="Cronograma" /> },
-          { path: 'calendar', element: <ProjectTabPlaceholder tab="Calendario" /> },
+          { path: 'timeline', element: <ProjectTimelinePage /> },
+          { path: 'calendar', element: <ProjectCalendarPage /> },
           { path: 'meetings', element: <ProjectTabPlaceholder tab="Reuniones" /> },
           { path: 'documents', element: <ProjectTabPlaceholder tab="Documentos" /> },
           { path: 'members', element: <ProjectMembersPage /> },

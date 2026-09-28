@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn, fullName } from '@/lib/utils';
+import { formatDateOnly, isBeforeToday } from '@/lib/dates';
 import { toast } from 'sonner';
 import { useProjectMembers } from '@/features/projects/hooks';
 import { useCompleteTask, useTasks } from '@/features/tasks/hooks';
@@ -110,7 +111,7 @@ export function ProjectTasksPage() {
           <ul className="space-y-2">
             {data.data.map((task) => {
               const done = task.status === 'DONE';
-              const overdue = !done && new Date(task.dueDate) < new Date();
+              const overdue = !done && isBeforeToday(task.dueDate);
               return (
                 <li
                   key={task.id}
@@ -144,7 +145,7 @@ export function ProjectTasksPage() {
                       {task.title}
                     </p>
                     <p className={cn('text-xs', overdue ? 'text-destructive' : 'text-muted-foreground')}>
-                      Vence {new Date(task.dueDate).toLocaleDateString()}
+                      Vence {formatDateOnly(task.dueDate)}
                       {overdue && ' · atrasada'}
                     </p>
                   </button>

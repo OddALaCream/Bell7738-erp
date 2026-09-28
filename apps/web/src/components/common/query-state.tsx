@@ -26,14 +26,22 @@ export function QueryState<T>({
     return <>{skeleton ?? <DefaultSkeleton />}</>;
   }
   if (query.isError) {
-    const error = query.error;
-    if (error instanceof ApiError && error.status === 403) return <ForbiddenState />;
-    if (error instanceof ApiError && error.status === 404) return <NotFoundState />;
-    return <ErrorState error={error} onRetry={() => query.refetch()} />;
+    return <QueryErrorState error={query.error} onRetry={() => query.refetch()} />;
   }
   const data = query.data as T;
   if (emptyWhen && empty && emptyWhen(data)) return <>{empty}</>;
   return <>{children(data)}</>;
+}
+
+/**
+ * docs/UI-UX.md "Error": 403/404 show a safe state (retrying can't help);
+ * anything else offers a retry. Exported for screens that must keep their
+ * content mounted (e.g. a calendar) and so can't wrap it in `QueryState`.
+ */
+export function QueryErrorState({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  if (error instanceof ApiError && error.status === 403) return <ForbiddenState />;
+  if (error instanceof ApiError && error.status === 404) return <NotFoundState />;
+  return <ErrorState error={error} onRetry={onRetry} />;
 }
 
 function DefaultSkeleton() {

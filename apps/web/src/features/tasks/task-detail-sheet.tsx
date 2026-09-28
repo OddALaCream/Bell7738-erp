@@ -9,6 +9,7 @@ import { ConfirmDialog } from '@/components/common/confirm-dialog';
 import { ErrorState } from '@/components/common/error-state';
 import { useAuth } from '@/features/auth/auth-context';
 import { fullName } from '@/lib/utils';
+import { formatDateOnly } from '@/lib/dates';
 import { toast } from 'sonner';
 import { ApiError } from '@/lib/api-types';
 import { useCompleteTask, useDeleteTask, useReopenTask, useTask } from './hooks';
@@ -67,8 +68,8 @@ export function TaskDetailSheet({
                 <TaskStatusBadge status={task.status} />
                 {task.description && <p className="whitespace-pre-wrap text-muted-foreground">{task.description}</p>}
                 <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                  <span>Inicio: {new Date(task.startDate).toLocaleDateString()}</span>
-                  <span>Vencimiento: {new Date(task.dueDate).toLocaleDateString()}</span>
+                  <span>Inicio: {formatDateOnly(task.startDate)}</span>
+                  <span>Vencimiento: {formatDateOnly(task.dueDate)}</span>
                 </div>
                 <div>
                   <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Asignados</p>

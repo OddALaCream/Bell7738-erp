@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { formatDateOnly } from '@/lib/dates';
 import { useProjects } from '@/features/projects/hooks';
 import { ProjectStatusBadge } from '@/features/projects/status-badge';
 import { ProjectFormDialog } from '@/features/projects/project-form-dialog';
@@ -131,8 +132,8 @@ export function ProjectsListPage() {
                   </div>
                   {project.clientName && <p className="text-sm text-muted-foreground">{project.clientName}</p>}
                   <p className="text-xs text-muted-foreground">
-                    {project.startDate ? new Date(project.startDate).toLocaleDateString() : 'Sin inicio'} —{' '}
-                    {project.expectedEndDate ? new Date(project.expectedEndDate).toLocaleDateString() : 'sin fecha límite'}
+                    {project.startDate ? formatDateOnly(project.startDate) : 'Sin inicio'} —{' '}
+                    {project.expectedEndDate ? formatDateOnly(project.expectedEndDate) : 'sin fecha límite'}
                   </p>
                 </CardContent>
               </Card>

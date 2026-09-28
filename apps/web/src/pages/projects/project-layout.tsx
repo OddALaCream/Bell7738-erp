@@ -6,6 +6,7 @@ import { QueryState } from '@/components/common/query-state';
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { formatDateOnly } from '@/lib/dates';
 import { useProject, useDeleteProject } from '@/features/projects/hooks';
 import { ProjectStatusBadge } from '@/features/projects/status-badge';
 import { ProjectFormDialog } from '@/features/projects/project-form-dialog';
@@ -44,8 +45,8 @@ export function ProjectLayout() {
                 </div>
                 {project.clientName && <p className="text-sm text-muted-foreground">Cliente: {project.clientName}</p>}
                 <p className="text-xs text-muted-foreground">
-                  {project.startDate ? new Date(project.startDate).toLocaleDateString() : 'Sin inicio'} —{' '}
-                  {project.expectedEndDate ? new Date(project.expectedEndDate).toLocaleDateString() : 'sin fecha límite'}
+                  {project.startDate ? formatDateOnly(project.startDate) : 'Sin inicio'} —{' '}
+                  {project.expectedEndDate ? formatDateOnly(project.expectedEndDate) : 'sin fecha límite'}
                 </p>
               </div>
               <div className="flex gap-2">

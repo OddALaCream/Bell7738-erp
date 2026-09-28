@@ -138,3 +138,89 @@
     min-width: 44px;
   }
 }
+
+/*
+ * FullCalendar theming. Tasks and meetings are told apart by color AND an
+ * icon/label inside each event plus the legend (docs/UI-UX.md: "el color nunca
+ * es el único indicador"). DONE tasks get reduced opacity, a check icon and a
+ * struck-through title; the tinted background keeps text contrast at AA.
+ */
+.fc-erp {
+  --fc-border-color: var(--border);
+  --fc-page-bg-color: var(--background);
+  --fc-neutral-bg-color: var(--muted);
+  --fc-neutral-text-color: var(--muted-foreground);
+  --fc-today-bg-color: var(--accent);
+  --fc-list-event-hover-bg-color: var(--accent);
+  --fc-more-link-bg-color: var(--muted);
+  --fc-now-indicator-color: var(--destructive);
+  color: var(--foreground);
+}
+.fc-erp .fc-erp-event-content {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.25rem;
+}
+.fc-erp .fc-erp-event-content .fc-event-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fc-erp .fc-h-event.fc-event-task,
+.fc-erp .fc-v-event.fc-event-task {
+  background-color: var(--color-brand-600);
+  border-color: var(--color-brand-600);
+  color: #fff;
+}
+.fc-erp .fc-h-event.fc-event-task-done,
+.fc-erp .fc-v-event.fc-event-task-done {
+  background-color: var(--color-brand-100);
+  border-color: var(--color-brand-300);
+  color: var(--color-brand-900);
+  opacity: 0.75;
+}
+.fc-erp .fc-event-task-done .fc-event-title {
+  text-decoration: line-through;
+}
+.fc-erp .fc-h-event.fc-event-meeting,
+.fc-erp .fc-v-event.fc-event-meeting {
+  background-color: var(--secondary);
+  border: 1px solid var(--foreground);
+  color: var(--secondary-foreground);
+}
+.fc-erp .fc-list-event.fc-event-task-done td {
+  opacity: 0.6;
+}
+.fc-erp .fc-toolbar {
+  gap: 0.5rem;
+}
+.fc-erp .fc-toolbar-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.fc-erp .fc-button {
+  background-color: var(--background);
+  border-color: var(--border);
+  color: var(--foreground);
+  text-transform: none;
+  box-shadow: none !important;
+}
+.fc-erp .fc-button:hover {
+  background-color: var(--accent);
+}
+.fc-erp .fc-button-primary:not(:disabled).fc-button-active {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.fc-erp .fc-button:disabled {
+  opacity: 0.5;
+}
+@media (pointer: coarse) {
+  .fc-erp .fc-button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

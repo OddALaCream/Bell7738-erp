@@ -150,10 +150,13 @@ their own audit events — not something the frontend can work around.
 `dueDate`, etc.) use bare `YYYY-MM-DD`. The Prisma columns are `@db.Date`,
 but Nest's default JSON serialization calls `Date.prototype.toJSON()`,
 which always produces a full `2026-09-28T00:00:00.000Z` instant regardless
-of the underlying SQL type. **Frontend workaround:** every calendar-date
-value is read defensively (`value.slice(0, 10)` or `new Date(value)`,
-which both work whether the string is bare or a full instant) rather than
-assuming the documented bare format.
+of the underlying SQL type. (The schedule read models — `/timeline`,
+`/calendar`, `/me/schedule` — do format tasks as bare `YYYY-MM-DD`; project
+and task resources do not.) **Frontend workaround:** every calendar-date
+value goes through `apps/web/src/lib/dates.ts`, which keeps only the first 10
+characters and builds a *local* date from them. `new Date(value)` must not be
+used for display: in a UTC-negative zone the `T00:00:00Z` instant renders as
+the previous day (covered by `lib/dates.test.ts`, pinned to UTC−5).
 
 ## Notes format for Tiptap (meetings)
 

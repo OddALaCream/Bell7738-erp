@@ -7,6 +7,7 @@ import type { PrismaService } from '../prisma/prisma.service.js';
 import type { PasswordService } from './password.service.js';
 import type { SessionService } from './session.service.js';
 import type { TokenService } from './token.service.js';
+import type { AuditService } from '../audit/audit.service.js';
 
 function makeUser(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -32,6 +33,7 @@ function makeService(overrides?: {
       findUnique: vi.fn().mockResolvedValue(user),
       findUniqueOrThrow: vi.fn().mockResolvedValue(user),
       update: vi.fn().mockResolvedValue(user),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     // The callback form receives `prisma` itself as `tx` — fine for these
     // unit tests since the mock doesn't model real transactional isolation.
@@ -74,8 +76,13 @@ function makeService(overrides?: {
     }),
   } as unknown as TokenService;
 
+  const audit = {
+    log: vi.fn(),
+    logInTransaction: vi.fn(),
+  } as unknown as AuditService;
   return {
-    auth: new AuthService(prisma, password, sessions, tokens),
+    auth: new AuthService(prisma, password, sessions, tokens, audit),
+    audit,
     prisma,
     password,
     sessions,
@@ -84,6 +91,14 @@ function makeService(overrides?: {
 }
 
 describe('AuthService.login', () => {
+  it('does not create a session if credentials or status changed during verification', async () => {
+    const { auth, prisma, sessions } = makeService();
+    vi.mocked(prisma.user.updateMany).mockResolvedValue({ count: 0 });
+    await expect(
+      auth.login('owner@example.com', 'old-password', {}),
+    ).rejects.toBeInstanceOf(InvalidCredentialsException);
+    expect(sessions.createSession).not.toHaveBeenCalled();
+  });
   it('throws a generic error when the user does not exist', async () => {
     const { auth } = makeService({ user: null });
     await expect(
@@ -138,17 +153,36 @@ describe('AuthService.login', () => {
     });
     expect(result.accessToken).toBe('access-token');
     expect(result.user.email).toBe('owner@example.com');
-    expect(sessions.createSession).toHaveBeenCalledWith('user-1', {
-      ip: '127.0.0.1',
-    });
-    expect(prisma.user.update).toHaveBeenCalledWith({
-      where: { id: 'user-1' },
+    expect(sessions.createSession).toHaveBeenCalledWith(
+      'user-1',
+      {
+        ip: '127.0.0.1',
+      },
+      prisma,
+    );
+    expect(prisma.user.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'user-1',
+        passwordHash: 'hashed',
+        status: 'ACTIVE',
+        email: 'owner@example.com',
+      },
       data: { lastLoginAt: expect.any(Date) },
     });
   });
 });
 
 describe('AuthService.refresh', () => {
+  it('does not burn a valid session because of an operational rotation failure', async () => {
+    const { auth, sessions } = makeService();
+    vi.mocked(sessions.rotateSession).mockRejectedValue(
+      new Error('database temporarily unavailable'),
+    );
+    await expect(auth.refresh('token')).rejects.toThrow(
+      /temporarily unavailable/,
+    );
+    expect(sessions.revokeSession).not.toHaveBeenCalled();
+  });
   it('rejects a token that fails signature verification', async () => {
     const { auth, tokens } = makeService();
     (tokens.verifyRefreshToken as ReturnType<typeof vi.fn>).mockRejectedValue(
@@ -197,6 +231,19 @@ describe('AuthService.refresh', () => {
 });
 
 describe('AuthService.changePassword', () => {
+  it('rejects a stale verified password instead of overwriting a concurrent change', async () => {
+    const { auth, prisma, sessions } = makeService();
+    vi.mocked(prisma.user.updateMany).mockResolvedValue({ count: 0 });
+    await expect(
+      auth.changePassword(
+        'user-1',
+        'session-1',
+        'old-password',
+        'new-password',
+      ),
+    ).rejects.toBeInstanceOf(InvalidCredentialsException);
+    expect(sessions.reissueTokens).not.toHaveBeenCalled();
+  });
   it('rejects an incorrect current password', async () => {
     const { auth } = makeService({ passwordVerifies: false });
     await expect(
@@ -212,8 +259,8 @@ describe('AuthService.changePassword', () => {
       'correct',
       'newpassword123',
     );
-    expect(prisma.user.update).toHaveBeenCalledWith({
-      where: { id: 'user-1' },
+    expect(prisma.user.updateMany).toHaveBeenCalledWith({
+      where: { id: 'user-1', passwordHash: 'hashed', status: 'ACTIVE' },
       data: { passwordHash: 'new-hash' },
     });
     // Both calls receive the transaction client as their third argument —
@@ -251,6 +298,9 @@ describe('AuthService.revokeOwnSession', () => {
     await expect(auth.revokeOwnSession('user-1', 'session-2')).resolves.toBe(
       true,
     );
-    expect(sessions.revokeSession).toHaveBeenCalledWith('session-2');
+    expect(sessions.revokeSession).toHaveBeenCalledWith(
+      'session-2',
+      expect.anything(),
+    );
   });
 });

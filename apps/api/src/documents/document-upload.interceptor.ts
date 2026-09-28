@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   CallHandler,
   ExecutionContext,
   Injectable,
@@ -86,7 +87,11 @@ export class DocumentUploadInterceptor implements NestInterceptor {
           );
           return;
         }
-        reject(error);
+        reject(
+          error instanceof multer.MulterError
+            ? new BadRequestException('Invalid multipart upload.')
+            : error,
+        );
       });
     });
 

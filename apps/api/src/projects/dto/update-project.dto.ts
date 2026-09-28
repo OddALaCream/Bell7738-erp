@@ -35,10 +35,10 @@ export class UpdateProjectDto {
   status?: ProjectStatusValue;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   startDate?: string | null;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   expectedEndDate?: string | null;
 }

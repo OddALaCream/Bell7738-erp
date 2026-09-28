@@ -41,6 +41,7 @@ export class SessionService {
   async createSession(
     userId: string,
     metadata: RequestMetadata,
+    db: Db = this.prisma,
   ): Promise<IssuedTokens> {
     const sessionId = randomUUID();
     const refreshToken = await this.tokens.signRefreshToken(
@@ -50,7 +51,7 @@ export class SessionService {
     );
     const now = new Date();
 
-    await this.prisma.session.create({
+    await db.session.create({
       data: {
         id: sessionId,
         userId,
@@ -200,8 +201,8 @@ export class SessionService {
     };
   }
 
-  async revokeSession(sessionId: string): Promise<void> {
-    await this.prisma.session.updateMany({
+  async revokeSession(sessionId: string, db: Db = this.prisma): Promise<void> {
+    await db.session.updateMany({
       where: { id: sessionId, revokedAt: null },
       data: { revokedAt: new Date() },
     });

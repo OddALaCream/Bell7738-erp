@@ -42,19 +42,19 @@ export class ListProjectsDto {
   view?: (typeof VIEWS)[number];
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   startFrom?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   startTo?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   endFrom?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   endTo?: string;
 
   @IsOptional()

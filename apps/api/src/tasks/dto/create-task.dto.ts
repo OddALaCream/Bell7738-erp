@@ -20,10 +20,10 @@ export class CreateTaskDto {
   @MaxLength(4000)
   description?: string;
 
-  @IsDateString()
+  @IsDateString({ strict: true })
   startDate!: string;
 
-  @IsDateString()
+  @IsDateString({ strict: true })
   dueDate!: string;
 
   // docs/API.md: "Requiere al menos un asignado válido."

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import type { Request, Response, NextFunction } from 'express';
 import { AppConfigService } from './config/app-config.service.js';
 import { ApiException } from './common/exceptions.js';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter.js';
@@ -29,6 +30,10 @@ export function configureApp(app: INestApplication): void {
   app.enableCors({ origin: config.app.webOrigin, credentials: true });
   app.use(cookieParser());
   app.use(requestIdMiddleware);
+  app.use('/api', (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
 
   app.setGlobalPrefix('api', {
     exclude: [

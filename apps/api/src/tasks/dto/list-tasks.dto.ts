@@ -34,11 +34,11 @@ export class ListTasksDto {
   assigneeId?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   from?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   to?: string;
 
   // Ignored when `status` is explicitly provided. Defaults to false: the

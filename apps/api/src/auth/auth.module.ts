@@ -6,9 +6,10 @@ import { PasswordService } from './password.service.js';
 import { SessionService } from './session.service.js';
 import { TokenService } from './token.service.js';
 import { SessionAuthGuard } from './guards/session-auth.guard.js';
+import { AuditWriterModule } from '../audit/audit-writer.module.js';
 
 @Module({
-  imports: [JwtModule.register({})],
+  imports: [JwtModule.register({}), AuditWriterModule],
   controllers: [AuthController],
   providers: [
     AuthService,

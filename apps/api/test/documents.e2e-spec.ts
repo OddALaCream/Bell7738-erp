@@ -322,8 +322,9 @@ describe('Documents (e2e)', () => {
         .post(`/api/v1/projects/${project.id}/documents`)
         .set('Authorization', `Bearer ${accessToken}`)
         .field('extra', 'should not be accepted')
-        .attach('file', PDF_BYTES, 'Report.pdf');
-      expect(res.status).toBeGreaterThanOrEqual(400);
+        .attach('file', PDF_BYTES, 'Report.pdf')
+        .expect(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
 
       const count = await prisma.document.count({
         where: { projectId: project.id },

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -128,9 +129,10 @@ export class DocumentsService {
    */
   async create(
     projectId: string,
-    file: Express.Multer.File,
+    file: Express.Multer.File | undefined,
     actor: AuthenticatedUser,
   ) {
+    if (!file) throw new BadRequestException('A file is required.');
     try {
       await this.access.assertCanViewProject(actor, projectId);
       if (

@@ -3,6 +3,13 @@
  * of truth for every value ever written to AuditLog.action.
  */
 export const AUDIT_ACTIONS = [
+  'AUTH_LOGIN_SUCCEEDED',
+  'AUTH_LOGIN_FAILED',
+  'AUTH_REFRESH_REJECTED',
+  'AUTH_LOGOUT',
+  'AUTH_LOGOUT_ALL',
+  'AUTH_SESSION_REVOKED',
+  'AUTH_PASSWORD_CHANGED',
   'USER_INVITED',
   'USER_INVITATION_RESENT',
   'USER_INVITATION_REVOKED',

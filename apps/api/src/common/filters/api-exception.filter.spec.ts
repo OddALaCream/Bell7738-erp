@@ -1,4 +1,5 @@
 import { ArgumentsHost } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { ApiExceptionFilter } from './api-exception.filter.js';
 import { SessionInvalidException } from '../exceptions.js';
@@ -18,6 +19,25 @@ function makeHost(path = '/api/v1/roles') {
 }
 
 describe('ApiExceptionFilter', () => {
+  it('does not log raw ORM errors containing credential values', () => {
+    const spy = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    try {
+      const filter = new ApiExceptionFilter();
+      const { host, json } = makeHost();
+      filter.catch(
+        new Error(
+          'Invalid query: passwordHash=SECRET_HASH refreshToken=SECRET_TOKEN',
+        ),
+        host,
+      );
+      expect(JSON.stringify(spy.mock.calls)).not.toContain('SECRET');
+      expect(JSON.stringify(json.mock.calls)).not.toContain('SECRET');
+    } finally {
+      spy.mockRestore();
+    }
+  });
   it('maps a bare HttpException by status code when no message is given', () => {
     const filter = new ApiExceptionFilter();
     const { host, status, json } = makeHost();

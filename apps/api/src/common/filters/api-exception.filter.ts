@@ -80,7 +80,12 @@ export class ApiExceptionFilter implements ExceptionFilter {
       return;
     }
 
-    this.logger.error(exception instanceof Error ? exception.stack : exception);
+    // ORM errors can embed complete query arguments, including hashes or tokens.
+    // Keep the correlation ID and error class; never log an unredacted exception.
+    this.logger.error({
+      requestId,
+      errorType: exception instanceof Error ? exception.name : 'UnknownError',
+    });
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
       error: {
         code: 'INTERNAL_ERROR',

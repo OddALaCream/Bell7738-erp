@@ -115,6 +115,12 @@ function makeService(overrides?: {
 }
 
 describe('DocumentsService.create', () => {
+  it('rejects a missing multipart file with a validation error', async () => {
+    const { service } = makeService();
+    await expect(
+      service.create('proj-1', undefined, owner),
+    ).rejects.toMatchObject({ status: 400 });
+  });
   it('rejects when the actor lacks member-level access (DOCUMENTS_UPLOAD + MEMBER/MANAGER/override)', async () => {
     const { service, storage } = makeService({ hasMemberLevelAccess: false });
     await expect(

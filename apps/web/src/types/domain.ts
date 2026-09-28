@@ -128,10 +128,9 @@ export interface ProjectMember {
 }
 
 export interface TaskAssignee {
-  id: string;
-  firstName: string;
-  lastName: string;
-  avatarStorageKey: string | null;
+  userId: string;
+  assignedAt: string;
+  user: Pick<UserSummary, 'id' | 'firstName' | 'lastName' | 'email' | 'avatarStorageKey'>;
 }
 
 export interface Task {
@@ -142,7 +141,7 @@ export interface Task {
   startDate: string;
   dueDate: string;
   status: TaskStatus;
-  creatorId: string;
+  createdById: string;
   assignees: TaskAssignee[];
   completedAt: string | null;
   createdAt: string;

@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Separator } from '@/components/ui/separator';
 import { EmptyState } from '@/components/common/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { notificationHref } from './api';
+import { notificationHref, notificationTitle } from './api';
 import { useMarkAllNotificationsRead, useMarkNotificationRead, useNotifications, useUnreadCount } from './hooks';
 import type { Notification } from '@/types/domain';
 
@@ -19,7 +19,7 @@ export function NotificationBell() {
   const markAllRead = useMarkAllNotificationsRead();
 
   function handleSelect(notification: Notification) {
-    if (!notification.read) markRead.mutate(notification.id);
+    if (!notification.readAt) markRead.mutate(notification.id);
     const href = notificationHref(notification);
     navigate(href ?? '/notifications');
   }
@@ -70,9 +70,9 @@ export function NotificationBell() {
                     className="flex w-full flex-col gap-0.5 px-3 py-2.5 text-left text-sm hover:bg-accent"
                   >
                     <span className="flex items-center gap-2">
-                      {!notification.read && <span className="size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />}
-                      <span className={notification.read ? 'text-muted-foreground' : 'font-medium'}>
-                        {notification.title}
+                      {!notification.readAt && <span className="size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />}
+                      <span className={notification.readAt ? 'text-muted-foreground' : 'font-medium'}>
+                        {notificationTitle(notification)}
                       </span>
                     </span>
                     <span className="text-xs text-muted-foreground">

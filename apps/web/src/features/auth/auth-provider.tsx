@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { http, registerSessionExpiredHandler, setAccessToken } from '@/lib/api-client';
+import { api, registerSessionExpiredHandler, setAccessToken } from '@/lib/api-client';
 import type { UserSummary } from '@/types/domain';
 import { AuthContext, type AuthContextValue } from './auth-context';
 import * as authApi from './api';
@@ -31,8 +31,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     bootstrapped.current = true;
     (async () => {
       try {
-        const response = await http.post<{ accessToken: string }>('/auth/refresh');
-        setAccessToken(response.data.accessToken);
+        const response = await api.post<{ accessToken: string }>('/auth/refresh');
+        setAccessToken(response.accessToken);
         const me = await authApi.fetchMe();
         setUser(me);
         setStatus('authenticated');

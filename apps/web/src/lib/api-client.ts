@@ -43,12 +43,14 @@ interface RetriableConfig extends AxiosRequestConfig {
 
 async function performRefresh(): Promise<string | null> {
   try {
-    const response = await axios.post<{ accessToken: string; expiresIn: number }>(
+    // Every non-paginated response is wrapped in { data: ... } by the
+    // backend's global ResponseInterceptor — see docs/FRONTEND_BACKEND_GAPS.md.
+    const response = await axios.post<{ data: { accessToken: string; expiresIn: number } }>(
       '/auth/refresh',
       undefined,
       { baseURL: env.apiBaseUrl, withCredentials: true },
     );
-    const token = response.data.accessToken;
+    const token = response.data.data.accessToken;
     setAccessToken(token);
     return token;
   } catch {
@@ -90,3 +92,34 @@ http.interceptors.response.use(
     });
   },
 );
+
+/**
+ * Every backend response that isn't already a `{ data, meta }` paginated
+ * collection gets wrapped once more in `{ data: ... }` by the global
+ * ResponseInterceptor (apps/api/src/common/interceptors/response.interceptor.ts)
+ * — including raw arrays like `/auth/sessions` or `/roles`. These helpers
+ * unwrap that single envelope; use `http` directly (typed as
+ * `ApiCollectionResponse<T>`) for the handful of paginated list endpoints,
+ * which are NOT double-wrapped.
+ */
+interface Envelope<T> {
+  data: T;
+}
+
+async function unwrap<T>(promise: Promise<{ data: Envelope<T> }>): Promise<T> {
+  const response = await promise;
+  return response.data.data;
+}
+
+export const api = {
+  get: <T>(url: string, config?: AxiosRequestConfig) => unwrap<T>(http.get(url, config)),
+  post: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) => unwrap<T>(http.post(url, body, config)),
+  patch: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) => unwrap<T>(http.patch(url, body, config)),
+  put: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) => unwrap<T>(http.put(url, body, config)),
+  delete: <T>(url: string, config?: AxiosRequestConfig) => unwrap<T>(http.delete(url, config)),
+};
+
+/** For endpoints that reply 204 No Content — nothing to unwrap. */
+export async function apiVoid(promise: Promise<unknown>): Promise<void> {
+  await promise;
+}

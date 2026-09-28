@@ -1,4 +1,4 @@
-import { http, setAccessToken } from '@/lib/api-client';
+import { api, http, setAccessToken } from '@/lib/api-client';
 import type { UserSummary, Session } from '@/types/domain';
 
 export interface LoginResponse {
@@ -8,9 +8,9 @@ export interface LoginResponse {
 }
 
 export async function login(email: string, password: string): Promise<LoginResponse> {
-  const { data } = await http.post<LoginResponse>('/auth/login', { email, password });
-  setAccessToken(data.accessToken);
-  return data;
+  const result = await api.post<LoginResponse>('/auth/login', { email, password });
+  setAccessToken(result.accessToken);
+  return result;
 }
 
 export async function logout(): Promise<void> {
@@ -30,21 +30,19 @@ export async function logoutAll(): Promise<void> {
 }
 
 export async function fetchMe(): Promise<UserSummary> {
-  const { data } = await http.get<UserSummary>('/auth/me');
-  return data;
+  return api.get<UserSummary>('/auth/me');
 }
 
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
-  const { data } = await http.post<{ accessToken: string }>('/auth/change-password', {
+  const result = await api.post<{ accessToken: string }>('/auth/change-password', {
     currentPassword,
     newPassword,
   });
-  setAccessToken(data.accessToken);
+  setAccessToken(result.accessToken);
 }
 
 export async function listSessions(): Promise<Session[]> {
-  const { data } = await http.get<Session[]>('/auth/sessions');
-  return data;
+  return api.get<Session[]>('/auth/sessions');
 }
 
 export async function revokeSession(sessionId: string): Promise<void> {

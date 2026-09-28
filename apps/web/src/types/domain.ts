@@ -22,6 +22,7 @@ export interface UserSummary {
 }
 
 export interface Permission {
+  id: string;
   key: string;
   description: string;
 }
@@ -38,6 +39,10 @@ export interface Role extends RoleSummary {
   permissions: Permission[];
 }
 
+/**
+ * Matches ADMIN_USER_SELECT in apps/api/src/users/users.service.ts — no
+ * `roles` field is returned here (see docs/FRONTEND_BACKEND_GAPS.md).
+ */
 export interface AdminUser {
   id: string;
   email: string;
@@ -46,9 +51,18 @@ export interface AdminUser {
   status: UserStatus;
   isOwner: boolean;
   avatarStorageKey: string | null;
-  roles: RoleSummary[];
   createdAt: string;
+  updatedAt: string;
   lastLoginAt: string | null;
+}
+
+/** Matches TEAM_USER_SELECT — GET /team and GET /users/:userId/profile. No roles. */
+export interface TeamUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  avatarStorageKey: string | null;
 }
 
 export interface Session {
@@ -62,17 +76,22 @@ export interface Session {
   isCurrent: boolean;
 }
 
-export type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED';
+export type InvitationStatus = 'pending' | 'accepted' | 'expired' | 'revoked';
 
+/** No `roles` field is returned — see docs/FRONTEND_BACKEND_GAPS.md. */
 export interface Invitation {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
+  invitedById: string;
   status: InvitationStatus;
-  roles: RoleSummary[];
   createdAt: string;
   expiresAt: string;
+}
+
+export interface InvitationWithManualLink extends Invitation {
+  manualLink: string;
 }
 
 export interface ProjectViewerCapabilities {
@@ -178,21 +197,25 @@ export type NotificationType =
   | 'MEETING_ADDED'
   | 'MEETING_UPDATED'
   | 'MEETING_REMINDER_24H'
-  | 'MEETING_REMINDER_1H'
-  | string;
+  | 'MEETING_REMINDER_1H';
 
+/**
+ * Matches NOTIFICATION_SELECT in apps/api/src/notifications/notifications.service.ts:
+ * only bare foreign key ids, no joined names, and `payload` is never
+ * populated by any current notification producer — see
+ * docs/FRONTEND_BACKEND_GAPS.md. Display text is derived client-side from
+ * `type` alone; links are built from the raw ids.
+ */
 export interface Notification {
   id: string;
   type: NotificationType;
-  title: string;
-  body: string | null;
-  read: boolean;
+  actorId: string | null;
+  projectId: string | null;
+  taskId: string | null;
+  meetingId: string | null;
+  payload: Record<string, unknown> | null;
+  readAt: string | null;
   createdAt: string;
-  resource?: {
-    kind: 'project' | 'task' | 'meeting' | 'document';
-    projectId?: string;
-    id?: string;
-  } | null;
 }
 
 export interface ActivityEvent {

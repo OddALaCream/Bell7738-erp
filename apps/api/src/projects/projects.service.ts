@@ -9,6 +9,7 @@ import { AppConfigService } from '../config/app-config.service.js';
 import { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
 import { ProjectAccessService } from './project-access.service.js';
 import { ActivityService } from '../activity/activity.service.js';
+import { AuditService } from '../audit/audit.service.js';
 import { paginate, type PaginatedResult } from '../common/pagination.js';
 import { toDateOrNull, toDateOrUndefined } from '../common/dates.js';
 import type { AuthenticatedUser } from '../auth/types.js';
@@ -25,6 +26,7 @@ export class ProjectsService {
     private readonly effectivePermissions: EffectivePermissionsService,
     private readonly access: ProjectAccessService,
     private readonly activity: ActivityService,
+    private readonly audit: AuditService,
   ) {}
 
   /** docs/RBAC.md "Listados aplican el scope en la consulta; no recuperan todo para filtrar en memoria." */
@@ -177,6 +179,12 @@ export class ProjectsService {
             addedById: actor.id,
           },
         });
+        await this.audit.logInTransaction(tx, {
+          actorId: actor.id,
+          action: 'PROJECT_CREATED',
+          entityType: 'Project',
+          entityId: project.id,
+        });
         return project;
       })
       .then(async (created) => {
@@ -271,11 +279,19 @@ export class ProjectsService {
     }
 
     // Logical delete only — docs/API.md "Realiza baja lógica, no cascade físico."
-    const { count } = await this.prisma.project.updateMany({
-      where: { id: projectId, deletedAt: null },
-      data: { deletedAt: new Date(), deletedById: actor.id },
+    await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.project.updateMany({
+        where: { id: projectId, deletedAt: null },
+        data: { deletedAt: new Date(), deletedById: actor.id },
+      });
+      if (count === 0) throw new NotFoundException();
+      await this.audit.logInTransaction(tx, {
+        actorId: actor.id,
+        action: 'PROJECT_DELETED',
+        entityType: 'Project',
+        entityId: projectId,
+      });
     });
-    if (count === 0) throw new NotFoundException();
 
     await this.activity.record({
       projectId,

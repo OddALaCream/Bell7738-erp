@@ -23,6 +23,72 @@ describe('Backend security regressions (HTTP + PostgreSQL)', () => {
   const roles: string[] = [];
   const password = 'qa-critical-passphrase-123';
 
+  it('durably audits project administration and document upload/delete', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/projects')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: 'Audit regression', status: 'ACTIVE' })
+      .expect(201);
+    const id = created.body.data.id as string;
+    try {
+      await request(app.getHttpServer())
+        .post(`/api/v1/projects/${id}/members`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ userId: actorId, role: 'MEMBER' })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/api/v1/projects/${id}/members/${actorId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ role: 'VIEWER' })
+        .expect(200);
+      await request(app.getHttpServer())
+        .delete(`/api/v1/projects/${id}/members/${actorId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(204);
+      const uploaded = await request(app.getHttpServer())
+        .post(`/api/v1/projects/${id}/documents`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .attach('file', Buffer.from('%PDF-1.7\nQA'), 'qa.pdf')
+        .expect(201);
+      const documentId = uploaded.body.data.id as string;
+      await request(app.getHttpServer())
+        .delete(`/api/v1/projects/${id}/documents/${documentId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(204);
+      await request(app.getHttpServer())
+        .delete(`/api/v1/projects/${id}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(204);
+      const events = await prisma.auditLog.findMany({
+        where: {
+          OR: [
+            { entityId: id },
+            { entityId: documentId },
+            { entityId: actorId, action: { startsWith: 'PROJECT_MEMBER_' } },
+          ],
+        },
+      });
+      expect(events.map(({ action }) => action)).toEqual(
+        expect.arrayContaining([
+          'PROJECT_CREATED',
+          'PROJECT_DELETED',
+          'PROJECT_MEMBER_ADDED',
+          'PROJECT_MEMBER_ROLE_CHANGED',
+          'PROJECT_MEMBER_REMOVED',
+          'DOCUMENT_UPLOADED',
+          'DOCUMENT_DELETED',
+        ]),
+      );
+      expect(events.every(({ actorId: actor }) => actor !== null)).toBe(true);
+    } finally {
+      await prisma.notification.deleteMany({ where: { projectId: id } });
+      await prisma.activityEvent.deleteMany({ where: { projectId: id } });
+      await prisma.document.deleteMany({ where: { projectId: id } });
+      await prisma.projectMember.deleteMany({ where: { projectId: id } });
+      await prisma.project.delete({ where: { id } });
+    }
+  });
+
   async function login(email: string, plainPassword = password) {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/login')

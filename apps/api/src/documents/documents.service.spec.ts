@@ -10,6 +10,7 @@ import type { EffectivePermissionsService } from '../rbac/effective-permissions.
 import type { ProjectAccessService } from '../projects/project-access.service.js';
 import type { StorageService } from '../storage/storage.service.js';
 import type { ActivityService } from '../activity/activity.service.js';
+import type { AuditService } from '../audit/audit.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 
 const owner: AuthenticatedUser = {
@@ -63,6 +64,7 @@ function makeService(overrides?: {
       create: vi.fn().mockResolvedValue(baseDocument),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(prisma)),
   } as unknown as PrismaService;
 
   const effectivePermissions = {
@@ -98,6 +100,9 @@ function makeService(overrides?: {
   const activity = {
     record: vi.fn().mockResolvedValue(undefined),
   } as unknown as ActivityService;
+  const audit = {
+    logInTransaction: vi.fn().mockResolvedValue(undefined),
+  } as unknown as AuditService;
 
   return {
     service: new DocumentsService(
@@ -106,15 +111,27 @@ function makeService(overrides?: {
       access,
       storage,
       activity,
+      audit,
     ),
     prisma,
     access,
     storage,
     activity,
+    audit,
   };
 }
 
 describe('DocumentsService.create', () => {
+  it('cleans up the upload when its transactional audit fails', async () => {
+    const { service, audit, storage } = makeService();
+    vi.mocked(audit.logInTransaction).mockRejectedValueOnce(
+      new Error('audit unavailable'),
+    );
+    await expect(service.create('proj-1', pdfFile, owner)).rejects.toThrow(
+      'audit unavailable',
+    );
+    expect(storage.deleteIfExists).toHaveBeenCalledWith(pdfFile.filename);
+  });
   it('rejects a missing multipart file with a validation error', async () => {
     const { service } = makeService();
     await expect(
@@ -236,6 +253,24 @@ describe('DocumentsService.download', () => {
 });
 
 describe('DocumentsService.delete', () => {
+  it('does not delete the physical file when its transactional audit fails', async () => {
+    const { service, audit, storage } = makeService();
+    vi.mocked(audit.logInTransaction).mockRejectedValueOnce(
+      new Error('audit unavailable'),
+    );
+    await expect(service.delete('proj-1', 'doc-1', owner)).rejects.toThrow(
+      'audit unavailable',
+    );
+    expect(storage.deleteIfExists).not.toHaveBeenCalled();
+  });
+  it('does not duplicate activity or audit after a concurrent delete won', async () => {
+    const { service, prisma, audit, activity, storage } = makeService();
+    vi.mocked(prisma.document.updateMany).mockResolvedValueOnce({ count: 0 });
+    await service.delete('proj-1', 'doc-1', owner);
+    expect(audit.logInTransaction).not.toHaveBeenCalled();
+    expect(activity.record).not.toHaveBeenCalled();
+    expect(storage.deleteIfExists).toHaveBeenCalled();
+  });
   it('denies an uploader demoted to VIEWER', async () => {
     const { service, storage } = makeService({
       effectiveKeys: new Set(['DOCUMENTS_DELETE']),

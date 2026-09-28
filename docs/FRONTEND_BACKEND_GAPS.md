@@ -144,6 +144,17 @@ filter dropdown is built from this same fixed list, so it will simply show
 fewer filter options than the product doc implies until those modules add
 their own audit events — not something the frontend can work around.
 
+## Calendar-date fields serialize as full ISO instants, not `YYYY-MM-DD`
+
+`docs/API.md` says calendar dates (`startDate`, `expectedEndDate`, task
+`dueDate`, etc.) use bare `YYYY-MM-DD`. The Prisma columns are `@db.Date`,
+but Nest's default JSON serialization calls `Date.prototype.toJSON()`,
+which always produces a full `2026-09-28T00:00:00.000Z` instant regardless
+of the underlying SQL type. **Frontend workaround:** every calendar-date
+value is read defensively (`value.slice(0, 10)` or `new Date(value)`,
+which both work whether the string is bare or a full instant) rather than
+assuming the documented bare format.
+
 ## Notes format for Tiptap (meetings)
 
 `docs/ARCHITECTURE.md` says meeting notes are "JSON estructurado". The

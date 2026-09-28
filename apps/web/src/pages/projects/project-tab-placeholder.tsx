@@ -1,7 +1,6 @@
-import { useSetBreadcrumb } from '@/components/layout/breadcrumb-context';
 import { ComingSoon } from '@/components/common/coming-soon';
 
+/** The parent ProjectLayout already sets the breadcrumb for all project tabs. */
 export function ProjectTabPlaceholder({ tab }: { tab: string }) {
-  useSetBreadcrumb(`Proyecto / ${tab}`);
   return <ComingSoon title={tab} />;
 }

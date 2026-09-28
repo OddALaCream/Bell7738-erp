@@ -105,13 +105,14 @@ export interface ProjectSummary {
   id: string;
   name: string;
   description: string | null;
-  client: string | null;
+  clientName: string | null;
   status: ProjectStatus;
   startDate: string | null;
   expectedEndDate: string | null;
   completedAt: string | null;
+  createdById: string;
   createdAt: string;
-  memberCount?: number;
+  updatedAt: string;
 }
 
 export interface ProjectDetail extends ProjectSummary {
@@ -120,11 +121,10 @@ export interface ProjectDetail extends ProjectSummary {
 
 export interface ProjectMember {
   userId: string;
-  projectId: string;
   role: ProjectRole;
+  joinedAt: string;
+  updatedAt: string;
   user: Pick<UserSummary, 'id' | 'firstName' | 'lastName' | 'email' | 'avatarStorageKey'>;
-  addedAt: string;
-  removedAt: string | null;
 }
 
 export interface TaskAssignee {

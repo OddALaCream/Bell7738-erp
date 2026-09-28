@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppShell } from '@/components/layout/app-shell';
 import { RequireAuth, RequireGuest } from './protected-route';
 import { LoginPage } from '@/pages/login-page';
@@ -15,6 +15,9 @@ import { AdminUsersPage } from '@/pages/admin/admin-users-page';
 import { AdminRolesPage } from '@/pages/admin/admin-roles-page';
 import { AdminAuditPage } from '@/pages/admin/admin-audit-page';
 import { ProjectsListPage } from '@/pages/projects/projects-list-page';
+import { ProjectLayout } from '@/pages/projects/project-layout';
+import { ProjectOverviewPage } from '@/pages/projects/project-overview-page';
+import { ProjectMembersPage } from '@/pages/projects/project-members-page';
 import { ProjectTabPlaceholder } from '@/pages/projects/project-tab-placeholder';
 
 export const router = createBrowserRouter([
@@ -37,14 +40,21 @@ export const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: 'schedule', element: <SchedulePage /> },
       { path: 'projects', element: <ProjectsListPage /> },
-      { path: 'projects/:projectId/overview', element: <ProjectTabPlaceholder tab="Overview" /> },
-      { path: 'projects/:projectId/tasks', element: <ProjectTabPlaceholder tab="Tareas" /> },
-      { path: 'projects/:projectId/timeline', element: <ProjectTabPlaceholder tab="Cronograma" /> },
-      { path: 'projects/:projectId/calendar', element: <ProjectTabPlaceholder tab="Calendario" /> },
-      { path: 'projects/:projectId/meetings', element: <ProjectTabPlaceholder tab="Reuniones" /> },
-      { path: 'projects/:projectId/documents', element: <ProjectTabPlaceholder tab="Documentos" /> },
-      { path: 'projects/:projectId/members', element: <ProjectTabPlaceholder tab="Miembros" /> },
-      { path: 'projects/:projectId/activity', element: <ProjectTabPlaceholder tab="Actividad" /> },
+      {
+        path: 'projects/:projectId',
+        element: <ProjectLayout />,
+        children: [
+          { index: true, element: <Navigate to="overview" replace /> },
+          { path: 'overview', element: <ProjectOverviewPage /> },
+          { path: 'tasks', element: <ProjectTabPlaceholder tab="Tareas" /> },
+          { path: 'timeline', element: <ProjectTabPlaceholder tab="Cronograma" /> },
+          { path: 'calendar', element: <ProjectTabPlaceholder tab="Calendario" /> },
+          { path: 'meetings', element: <ProjectTabPlaceholder tab="Reuniones" /> },
+          { path: 'documents', element: <ProjectTabPlaceholder tab="Documentos" /> },
+          { path: 'members', element: <ProjectMembersPage /> },
+          { path: 'activity', element: <ProjectTabPlaceholder tab="Actividad" /> },
+        ],
+      },
       { path: 'team', element: <TeamPage /> },
       { path: 'profile', element: <ProfilePage /> },
       { path: 'profile/sessions', element: <ProfileSessionsPage /> },

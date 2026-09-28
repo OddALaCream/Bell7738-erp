@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   addDays,
   diffInDays,
+  endOfLocalDayIso,
   formatDateOnly,
   formatDateOnlyRange,
   instantToLocalDay,
@@ -10,6 +11,7 @@ import {
   localDateOnly,
   localInputToInstant,
   parseDateOnly,
+  startOfLocalDayIso,
   toDateOnly,
 } from './dates';
 
@@ -73,5 +75,12 @@ describe('instants', () => {
     const instant = localInputToInstant('2026-09-28T20:00');
     expect(instant).toBe('2026-09-29T01:00:00.000Z');
     expect(instantToLocalInput(instant)).toBe('2026-09-28T20:00');
+  });
+});
+
+describe('local day bounds', () => {
+  it('covers the whole local day (UTC-5), not the UTC day', () => {
+    expect(startOfLocalDayIso('2026-09-28')).toBe('2026-09-28T05:00:00.000Z');
+    expect(endOfLocalDayIso('2026-09-28')).toBe('2026-09-29T04:59:59.999Z');
   });
 });

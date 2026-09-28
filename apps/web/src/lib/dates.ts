@@ -98,3 +98,14 @@ export function instantToLocalInput(instant: string): string {
 export function localInputToInstant(value: string): string {
   return new Date(value).toISOString();
 }
+
+/** First instant (UTC ISO) of a local calendar day, for `from` filters against instants. */
+export function startOfLocalDayIso(dateOnly: string): string {
+  return parseDateOnly(dateOnly).toISOString();
+}
+
+/** Last instant (UTC ISO) of a local calendar day, for inclusive `to` filters against instants. */
+export function endOfLocalDayIso(dateOnly: string): string {
+  const start = parseDateOnly(dateOnly);
+  return new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59, 999).toISOString();
+}

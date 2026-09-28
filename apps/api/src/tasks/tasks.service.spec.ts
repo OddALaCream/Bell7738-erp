@@ -9,6 +9,7 @@ import type { PrismaService } from '../prisma/prisma.service.js';
 import type { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
 import type { ProjectAccessService } from '../projects/project-access.service.js';
 import type { NotificationsService } from '../notifications/notifications.service.js';
+import type { ActivityService } from '../activity/activity.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 
 const owner: AuthenticatedUser = {
@@ -132,14 +133,20 @@ function makeService(overrides?: {
     notifyTaskAssigned: vi.fn().mockResolvedValue(undefined),
   } as unknown as NotificationsService;
 
+  const activity = {
+    record: vi.fn().mockResolvedValue(undefined),
+  } as unknown as ActivityService;
+
   return {
     service: new TasksService(
       prisma,
       effectivePermissions,
       access,
       notifications,
+      activity,
     ),
     prisma,
+    activity,
     access,
     effectivePermissions,
     notifications,

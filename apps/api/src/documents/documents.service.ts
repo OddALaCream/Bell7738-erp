@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
 import { ProjectAccessService } from '../projects/project-access.service.js';
 import { StorageService } from '../storage/storage.service.js';
+import { ActivityService } from '../activity/activity.service.js';
 import {
   EXTENSION_MIME_MAP,
   extensionOf,
@@ -60,6 +61,7 @@ export class DocumentsService {
     private readonly effectivePermissions: EffectivePermissionsService,
     private readonly access: ProjectAccessService,
     private readonly storage: StorageService,
+    private readonly activity: ActivityService,
   ) {}
 
   /** docs/RBAC.md "Listar/descargar: cualquier usuario con visibilidad del proyecto." */
@@ -173,6 +175,17 @@ export class DocumentsService {
         },
         select: DOCUMENT_SELECT,
       });
+      await this.activity.record({
+        projectId,
+        actorId: actor.id,
+        type: 'DOCUMENT_UPLOADED',
+        entityType: 'Document',
+        entityId: document.id,
+        metadata: {
+          originalName: document.originalName,
+          mimeType: document.mimeType,
+        },
+      });
       return toPublicShape(document);
     } catch (error) {
       await this.storage.deleteIfExists(file.filename);
@@ -229,6 +242,14 @@ export class DocumentsService {
       await this.prisma.document.updateMany({
         where: { id: documentId, projectId, deletedAt: null },
         data: { deletedAt: new Date(), deletedById: actor.id },
+      });
+      // Only recorded on the genuine transition, not a repeat idempotent call.
+      await this.activity.record({
+        projectId,
+        actorId: actor.id,
+        type: 'DOCUMENT_DELETED',
+        entityType: 'Document',
+        entityId: documentId,
       });
     }
     // Retryable regardless of whether this call performed the soft-delete or

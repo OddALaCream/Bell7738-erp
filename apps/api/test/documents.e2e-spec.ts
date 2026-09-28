@@ -146,6 +146,12 @@ describe('Documents (e2e)', () => {
     await prisma.projectMember.deleteMany({
       where: { projectId: { in: createdProjectIds } },
     });
+    // ActivityEvent.projectId is a real FK (onDelete: Restrict) — the
+    // document upload/delete calls above now record activity, so these rows
+    // must go before the project itself can be deleted.
+    await prisma.activityEvent.deleteMany({
+      where: { projectId: { in: createdProjectIds } },
+    });
     await prisma.project.deleteMany({
       where: { id: { in: createdProjectIds } },
     });

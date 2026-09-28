@@ -6,9 +6,11 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { EffectivePermissionsService } from './effective-permissions.service.js';
+import { AuditService } from '../audit/audit.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import type { CreateRoleDto } from './dto/create-role.dto.js';
 import type { UpdateRoleDto } from './dto/update-role.dto.js';
+import type { AuditContext } from '../audit/audit-context.decorator.js';
 
 const ROLE_DETAIL_SELECT = {
   id: true,
@@ -53,6 +55,7 @@ export class RolesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly effectivePermissions: EffectivePermissionsService,
+    private readonly audit: AuditService,
   ) {}
 
   /** docs/API.md: requires ROLES_VIEW *or* ROLES_MANAGE (either suffices) — @RequirePermissions is AND-only, so this is checked inline. */
@@ -118,7 +121,11 @@ export class RolesService {
     }
   }
 
-  async create(dto: CreateRoleDto, actor: AuthenticatedUser) {
+  async create(
+    dto: CreateRoleDto,
+    actor: AuthenticatedUser,
+    context?: AuditContext,
+  ) {
     await this.assertNameAvailable(dto.name);
     await this.effectivePermissions.assertPermissionsExistAndActorCanGrant(
       dto.permissionIds,
@@ -142,6 +149,18 @@ export class RolesService {
           })),
         });
       }
+      // docs/ARCHITECTURE.md: a critical change and its durable audit event
+      // commit in the same transaction, not as a best-effort side-effect
+      // afterward.
+      await this.audit.logInTransaction(tx, {
+        actorId: actor.id,
+        action: 'ROLE_CREATED',
+        entityType: 'Role',
+        entityId: created.id,
+        metadata: { name: created.name },
+        context,
+      });
+
       return tx.role.findUniqueOrThrow({
         where: { id: created.id },
         select: ROLE_DETAIL_SELECT,
@@ -151,7 +170,12 @@ export class RolesService {
     return toDetail(role);
   }
 
-  async update(roleId: string, dto: UpdateRoleDto, actor: AuthenticatedUser) {
+  async update(
+    roleId: string,
+    dto: UpdateRoleDto,
+    actor: AuthenticatedUser,
+    context?: AuditContext,
+  ) {
     const existing = await this.prisma.role.findUnique({
       where: { id: roleId },
       select: {
@@ -220,6 +244,15 @@ export class RolesService {
         }
       }
 
+      await this.audit.logInTransaction(tx, {
+        actorId: actor.id,
+        action: 'ROLE_UPDATED',
+        entityType: 'Role',
+        entityId: roleId,
+        metadata: { fields: Object.keys(dto) },
+        context,
+      });
+
       return tx.role.findUniqueOrThrow({
         where: { id: roleId },
         select: ROLE_DETAIL_SELECT,
@@ -229,7 +262,11 @@ export class RolesService {
     return toDetail(role);
   }
 
-  async delete(roleId: string): Promise<void> {
+  async delete(
+    roleId: string,
+    actor: AuthenticatedUser,
+    context?: AuditContext,
+  ): Promise<void> {
     const existing = await this.prisma.role.findUnique({
       where: { id: roleId },
     });
@@ -251,6 +288,15 @@ export class RolesService {
       // cleared explicitly before the role itself can be deleted.
       await tx.rolePermission.deleteMany({ where: { roleId } });
       await tx.role.delete({ where: { id: roleId } });
+
+      await this.audit.logInTransaction(tx, {
+        actorId: actor.id,
+        action: 'ROLE_DELETED',
+        entityType: 'Role',
+        entityId: roleId,
+        metadata: { name: existing.name },
+        context,
+      });
     });
   }
 
@@ -263,6 +309,7 @@ export class RolesService {
     userId: string,
     roleIds: string[],
     actor: AuthenticatedUser,
+    context?: AuditContext,
   ): Promise<void> {
     // docs/RBAC.md: "Un no-Owner ... no puede modificar sus propios roles."
     // Compared case-insensitively: ParseUUIDPipe preserves the caller's
@@ -334,6 +381,15 @@ export class RolesService {
           })),
         });
       }
+
+      await this.audit.logInTransaction(tx, {
+        actorId: actor.id,
+        action: 'USER_ROLES_ASSIGNED',
+        entityType: 'User',
+        entityId: userId,
+        metadata: { roleIds },
+        context,
+      });
     });
   }
 }

@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
 import { ProjectAccessService } from '../projects/project-access.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { ActivityService } from '../activity/activity.service.js';
 import { paginate, type PaginatedResult } from '../common/pagination.js';
 import { toDateOrUndefined } from '../common/dates.js';
 import type { AuthenticatedUser } from '../auth/types.js';
@@ -56,6 +57,7 @@ export class TasksService {
     private readonly effectivePermissions: EffectivePermissionsService,
     private readonly access: ProjectAccessService,
     private readonly notifications: NotificationsService,
+    private readonly activity: ActivityService,
   ) {}
 
   async list(
@@ -180,10 +182,10 @@ export class TasksService {
         });
       })
       .then(async (created) => {
-        // Best-effort, outside the transaction: a notification failure must
-        // never undo or fail an already-committed task creation.
-        await Promise.all(
-          dto.assigneeIds.map((userId) =>
+        // Best-effort, outside the transaction: a notification/activity
+        // failure must never undo or fail an already-committed task creation.
+        await Promise.all([
+          ...dto.assigneeIds.map((userId) =>
             this.notifications.notifyTaskAssigned({
               userId,
               actorId: actor.id,
@@ -191,7 +193,15 @@ export class TasksService {
               taskId: created.id,
             }),
           ),
-        );
+          this.activity.record({
+            projectId,
+            actorId: actor.id,
+            type: 'TASK_CREATED',
+            entityType: 'Task',
+            entityId: created.id,
+            metadata: { title: created.title },
+          }),
+        ]);
         return created;
       });
   }
@@ -251,10 +261,19 @@ export class TasksService {
     });
     if (count === 0) throw new NotFoundException();
 
-    return this.prisma.task.findUniqueOrThrow({
+    const updated = await this.prisma.task.findUniqueOrThrow({
       where: { id: taskId },
       select: TASK_SELECT,
     });
+    await this.activity.record({
+      projectId,
+      actorId: actor.id,
+      type: 'TASK_UPDATED',
+      entityType: 'Task',
+      entityId: taskId,
+      metadata: { fields: Object.keys(dto) },
+    });
+    return updated;
   }
 
   /** docs/API.md: "Operación idempotente que establece DONE y completedAt." */
@@ -288,6 +307,17 @@ export class TasksService {
       select: TASK_SELECT,
     });
     if (!fresh) throw new NotFoundException();
+
+    // Only record on a genuine transition, not on a repeat idempotent call.
+    if (task.status !== 'DONE') {
+      await this.activity.record({
+        projectId,
+        actorId: actor.id,
+        type: 'TASK_COMPLETED',
+        entityType: 'Task',
+        entityId: taskId,
+      });
+    }
     return fresh;
   }
 
@@ -323,10 +353,18 @@ export class TasksService {
       throw new ConflictException('Task is not completed.');
     }
 
-    return this.prisma.task.findUniqueOrThrow({
+    const reopened = await this.prisma.task.findUniqueOrThrow({
       where: { id: taskId },
       select: TASK_SELECT,
     });
+    await this.activity.record({
+      projectId,
+      actorId: actor.id,
+      type: 'TASK_REOPENED',
+      entityType: 'Task',
+      entityId: taskId,
+    });
+    return reopened;
   }
 
   /** docs/RBAC.md "Eliminar: TASKS_DELETE y ser MANAGER u override." */
@@ -352,6 +390,14 @@ export class TasksService {
       data: { deletedAt: new Date(), deletedById: actor.id },
     });
     if (count === 0) throw new NotFoundException();
+
+    await this.activity.record({
+      projectId,
+      actorId: actor.id,
+      type: 'TASK_DELETED',
+      entityType: 'Task',
+      entityId: taskId,
+    });
   }
 
   /** docs/API.md "Reemplaza el conjunto completo sin permitir cero asignados." Same authorization as a content edit. */
@@ -412,8 +458,8 @@ export class TasksService {
 
     // Best-effort, outside the transaction: only newly-added assignees (not
     // ones who were already assigned before this replacement) get notified.
-    await Promise.all(
-      newlyAddedAssigneeIds.map((userId) =>
+    await Promise.all([
+      ...newlyAddedAssigneeIds.map((userId) =>
         this.notifications.notifyTaskAssigned({
           userId,
           actorId: actor.id,
@@ -421,7 +467,15 @@ export class TasksService {
           taskId,
         }),
       ),
-    );
+      this.activity.record({
+        projectId,
+        actorId: actor.id,
+        type: 'TASK_ASSIGNEES_CHANGED',
+        entityType: 'Task',
+        entityId: taskId,
+        metadata: { assigneeIds: dto.assigneeIds },
+      }),
+    ]);
     return result;
   }
 

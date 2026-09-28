@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ProjectAccessService } from './project-access.service.js';
+import { ActivityService } from '../activity/activity.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import type { AddProjectMemberDto } from './dto/add-project-member.dto.js';
@@ -35,6 +36,7 @@ export class ProjectMembersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: ProjectAccessService,
+    private readonly activity: ActivityService,
   ) {}
 
   async list(projectId: string, actor: AuthenticatedUser) {
@@ -69,43 +71,55 @@ export class ProjectMembersService {
       throw new BadRequestException('userId must belong to an active user.');
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      await this.assertProjectNotDeleted(tx, projectId);
+    return this.prisma
+      .$transaction(async (tx) => {
+        await this.assertProjectNotDeleted(tx, projectId);
 
-      const existing = await tx.projectMember.findUnique({
-        where: { projectId_userId: { projectId, userId: dto.userId } },
-      });
-      if (existing && existing.removedAt === null) {
-        throw new ConflictException(
-          'User is already an active member of this project.',
-        );
-      }
-
-      // ProjectMember's PK is (projectId, userId) — a previously removed
-      // membership is the same row, so rejoining is an UPDATE, not an
-      // INSERT (see docs/DATABASE.md: history stays on the one row).
-      if (existing) {
-        return tx.projectMember.update({
+        const existing = await tx.projectMember.findUnique({
           where: { projectId_userId: { projectId, userId: dto.userId } },
+        });
+        if (existing && existing.removedAt === null) {
+          throw new ConflictException(
+            'User is already an active member of this project.',
+          );
+        }
+
+        // ProjectMember's PK is (projectId, userId) — a previously removed
+        // membership is the same row, so rejoining is an UPDATE, not an
+        // INSERT (see docs/DATABASE.md: history stays on the one row).
+        if (existing) {
+          return tx.projectMember.update({
+            where: { projectId_userId: { projectId, userId: dto.userId } },
+            data: {
+              role: dto.role,
+              addedById: actor.id,
+              removedAt: null,
+              joinedAt: new Date(),
+            },
+            select: MEMBER_SELECT,
+          });
+        }
+        return tx.projectMember.create({
           data: {
+            projectId,
+            userId: dto.userId,
             role: dto.role,
             addedById: actor.id,
-            removedAt: null,
-            joinedAt: new Date(),
           },
           select: MEMBER_SELECT,
         });
-      }
-      return tx.projectMember.create({
-        data: {
+      })
+      .then(async (member) => {
+        await this.activity.record({
           projectId,
-          userId: dto.userId,
-          role: dto.role,
-          addedById: actor.id,
-        },
-        select: MEMBER_SELECT,
+          actorId: actor.id,
+          type: 'PROJECT_MEMBER_ADDED',
+          entityType: 'ProjectMember',
+          entityId: dto.userId,
+          metadata: { role: dto.role },
+        });
+        return member;
       });
-    });
   }
 
   async updateRole(
@@ -125,24 +139,36 @@ export class ProjectMembersService {
       throw new ForbiddenException();
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      await this.assertProjectNotDeleted(tx, projectId);
+    return this.prisma
+      .$transaction(async (tx) => {
+        await this.assertProjectNotDeleted(tx, projectId);
 
-      const membership = await tx.projectMember.findFirst({
-        where: { projectId, userId, removedAt: null },
+        const membership = await tx.projectMember.findFirst({
+          where: { projectId, userId, removedAt: null },
+        });
+        if (!membership) throw new NotFoundException();
+
+        if (membership.role === 'MANAGER' && dto.role !== 'MANAGER') {
+          await this.assertNotLastManager(tx, projectId, userId);
+        }
+
+        return tx.projectMember.update({
+          where: { projectId_userId: { projectId, userId } },
+          data: { role: dto.role },
+          select: MEMBER_SELECT,
+        });
+      })
+      .then(async (member) => {
+        await this.activity.record({
+          projectId,
+          actorId: actor.id,
+          type: 'PROJECT_MEMBER_ROLE_CHANGED',
+          entityType: 'ProjectMember',
+          entityId: userId,
+          metadata: { role: dto.role },
+        });
+        return member;
       });
-      if (!membership) throw new NotFoundException();
-
-      if (membership.role === 'MANAGER' && dto.role !== 'MANAGER') {
-        await this.assertNotLastManager(tx, projectId, userId);
-      }
-
-      return tx.projectMember.update({
-        where: { projectId_userId: { projectId, userId } },
-        data: { role: dto.role },
-        select: MEMBER_SELECT,
-      });
-    });
   }
 
   async remove(
@@ -177,6 +203,14 @@ export class ProjectMembersService {
         where: { projectId_userId: { projectId, userId } },
         data: { removedAt: new Date() },
       });
+    });
+
+    await this.activity.record({
+      projectId,
+      actorId: actor.id,
+      type: 'PROJECT_MEMBER_REMOVED',
+      entityType: 'ProjectMember',
+      entityId: userId,
     });
   }
 

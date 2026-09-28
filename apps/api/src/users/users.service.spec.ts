@@ -5,6 +5,12 @@ import {
 } from '@nestjs/common';
 import { UsersService } from './users.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
+import type { AuditService } from '../audit/audit.service.js';
+
+const audit = {
+  log: vi.fn().mockResolvedValue(undefined),
+  logInTransaction: vi.fn().mockResolvedValue(undefined),
+} as unknown as AuditService;
 
 function makeUser(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -49,7 +55,7 @@ describe('UsersService.update (admin edit)', () => {
     const { prisma } = makePrisma({
       target: makeUser({ id: 'owner-1', isOwner: true }),
     });
-    const service = new UsersService(prisma);
+    const service = new UsersService(prisma, audit);
     await expect(
       service.update('owner-1', { firstName: 'Hacked' }, 'someone-else'),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -59,7 +65,7 @@ describe('UsersService.update (admin edit)', () => {
     const { prisma } = makePrisma({
       target: makeUser({ id: 'owner-1', isOwner: true }),
     });
-    const service = new UsersService(prisma);
+    const service = new UsersService(prisma, audit);
     await expect(
       service.update('owner-1', { firstName: 'Self' }, 'owner-1'),
     ).resolves.toBeDefined();
@@ -67,7 +73,7 @@ describe('UsersService.update (admin edit)', () => {
 
   it('allows a non-owner admin to edit a non-owner target', async () => {
     const { prisma } = makePrisma();
-    const service = new UsersService(prisma);
+    const service = new UsersService(prisma, audit);
     await expect(
       service.update('target-1', { firstName: 'New' }, 'admin-1'),
     ).resolves.toBeDefined();
@@ -77,7 +83,7 @@ describe('UsersService.update (admin edit)', () => {
 describe('UsersService status transitions', () => {
   it('rejects a user changing their own status (self-suspend)', async () => {
     const { prisma } = makePrisma();
-    const service = new UsersService(prisma);
+    const service = new UsersService(prisma, audit);
     await expect(
       service.suspend('target-1', 'target-1'),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -88,7 +94,7 @@ describe('UsersService status transitions', () => {
       updateManyCount: 0,
       target: makeUser({ status: 'INVITED' }),
     });
-    const service = new UsersService(prisma);
+    const service = new UsersService(prisma, audit);
     await expect(service.suspend('target-1', 'admin-1')).rejects.toBeInstanceOf(
       ConflictException,
     );
@@ -96,7 +102,7 @@ describe('UsersService status transitions', () => {
 
   it('suspends an ACTIVE user and revokes sessions', async () => {
     const { prisma, tx } = makePrisma({ updateManyCount: 1 });
-    const service = new UsersService(prisma);
+    const service = new UsersService(prisma, audit);
     await service.suspend('target-1', 'admin-1');
     expect(tx.user.updateMany).toHaveBeenCalledWith({
       where: { id: 'target-1', isOwner: false, status: { in: ['ACTIVE'] } },
@@ -110,7 +116,7 @@ describe('UsersService status transitions', () => {
       updateManyCount: 0,
       target: makeUser({ isOwner: true }),
     });
-    const service = new UsersService(prisma);
+    const service = new UsersService(prisma, audit);
     await expect(service.suspend('target-1', 'admin-1')).rejects.toBeInstanceOf(
       ForbiddenException,
     );
@@ -118,7 +124,7 @@ describe('UsersService status transitions', () => {
 
   it('404s when the target does not exist and the update matched nothing', async () => {
     const { prisma } = makePrisma({ updateManyCount: 0, target: null });
-    const service = new UsersService(prisma);
+    const service = new UsersService(prisma, audit);
     await expect(service.suspend('missing', 'admin-1')).rejects.toBeInstanceOf(
       NotFoundException,
     );
@@ -129,7 +135,7 @@ describe('UsersService status transitions', () => {
       updateManyCount: 1,
       target: makeUser({ status: 'SUSPENDED' }),
     });
-    const service = new UsersService(prisma);
+    const service = new UsersService(prisma, audit);
     await service.disable('target-1', 'admin-1');
     expect(tx.user.updateMany).toHaveBeenCalledWith({
       where: {
@@ -146,7 +152,7 @@ describe('UsersService status transitions', () => {
       updateManyCount: 0,
       target: makeUser({ status: 'ACTIVE' }),
     });
-    const service = new UsersService(prisma);
+    const service = new UsersService(prisma, audit);
     await expect(
       service.reactivate('target-1', 'admin-1'),
     ).rejects.toBeInstanceOf(ConflictException);
@@ -157,8 +163,24 @@ describe('UsersService status transitions', () => {
       updateManyCount: 1,
       target: makeUser({ status: 'SUSPENDED' }),
     });
-    const service = new UsersService(prisma);
+    const service = new UsersService(prisma, audit);
     await service.reactivate('target-1', 'admin-1');
     expect(tx.session.updateMany).not.toHaveBeenCalled();
+  });
+
+  // Regression coverage for a Phase 12 Codex adversarial review finding:
+  // docs/ARCHITECTURE.md requires a critical change and its durable audit
+  // event to commit in the same transaction — a failed audit write must
+  // roll back the status change, not be swallowed after the fact.
+  it('propagates an audit write failure from inside the same transaction', async () => {
+    const { prisma } = makePrisma({ updateManyCount: 1 });
+    const failingAudit = {
+      log: vi.fn().mockResolvedValue(undefined),
+      logInTransaction: vi.fn().mockRejectedValue(new Error('db down')),
+    } as unknown as AuditService;
+    const service = new UsersService(prisma, failingAudit);
+    await expect(service.suspend('target-1', 'admin-1')).rejects.toThrow(
+      'db down',
+    );
   });
 });

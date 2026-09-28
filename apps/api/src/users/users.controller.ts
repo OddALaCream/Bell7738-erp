@@ -14,7 +14,9 @@ import {
 } from '@nestjs/common';
 import { SessionAuthGuard } from '../auth/guards/session-auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import { CurrentAuditContext } from '../audit/audit-context.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
+import type { AuditContext } from '../audit/audit-context.decorator.js';
 import { PermissionsGuard } from '../rbac/permissions.guard.js';
 import { RequirePermissions } from '../rbac/require-permissions.decorator.js';
 import { RolesService } from '../rbac/roles.service.js';
@@ -51,8 +53,9 @@ export class UsersController {
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body() dto: UpdateUserDto,
     @CurrentUser() actor: AuthenticatedUser,
+    @CurrentAuditContext() context: AuditContext,
   ) {
-    return this.users.update(userId, dto, actor.id);
+    return this.users.update(userId, dto, actor.id, context);
   }
 
   @Post('users/:userId/suspend')
@@ -61,8 +64,9 @@ export class UsersController {
   suspend(
     @Param('userId', ParseUUIDPipe) userId: string,
     @CurrentUser() actor: AuthenticatedUser,
+    @CurrentAuditContext() context: AuditContext,
   ) {
-    return this.users.suspend(userId, actor.id);
+    return this.users.suspend(userId, actor.id, context);
   }
 
   @Post('users/:userId/reactivate')
@@ -71,8 +75,9 @@ export class UsersController {
   reactivate(
     @Param('userId', ParseUUIDPipe) userId: string,
     @CurrentUser() actor: AuthenticatedUser,
+    @CurrentAuditContext() context: AuditContext,
   ) {
-    return this.users.reactivate(userId, actor.id);
+    return this.users.reactivate(userId, actor.id, context);
   }
 
   @Post('users/:userId/disable')
@@ -81,8 +86,9 @@ export class UsersController {
   disable(
     @Param('userId', ParseUUIDPipe) userId: string,
     @CurrentUser() actor: AuthenticatedUser,
+    @CurrentAuditContext() context: AuditContext,
   ) {
-    return this.users.disable(userId, actor.id);
+    return this.users.disable(userId, actor.id, context);
   }
 
   @Put('users/:userId/roles')
@@ -92,9 +98,10 @@ export class UsersController {
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body() dto: AssignRolesDto,
     @CurrentUser() actor: AuthenticatedUser,
+    @CurrentAuditContext() context: AuditContext,
   ) {
     return this.roles
-      .assignRolesToUser(userId, dto.roleIds, actor)
+      .assignRolesToUser(userId, dto.roleIds, actor, context)
       .then(() => this.users.getById(userId));
   }
 

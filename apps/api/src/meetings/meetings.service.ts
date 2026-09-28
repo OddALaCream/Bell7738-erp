@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
 import { ProjectAccessService } from '../projects/project-access.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { ActivityService } from '../activity/activity.service.js';
 import { paginate, type PaginatedResult } from '../common/pagination.js';
 import { toDateOrUndefined } from '../common/dates.js';
 import { MeetingNotesRevisionConflictException } from './meeting.exceptions.js';
@@ -69,6 +70,7 @@ export class MeetingsService {
     private readonly effectivePermissions: EffectivePermissionsService,
     private readonly access: ProjectAccessService,
     private readonly notifications: NotificationsService,
+    private readonly activity: ActivityService,
   ) {}
 
   async list(
@@ -214,8 +216,8 @@ export class MeetingsService {
       .then(async (created) => {
         // Best-effort, outside the transaction: a notification failure must
         // never undo or fail an already-committed meeting creation.
-        await Promise.all(
-          invitedIds.map((userId) =>
+        await Promise.all([
+          ...invitedIds.map((userId) =>
             this.notifications.notifyMeetingAdded({
               userId,
               actorId: actor.id,
@@ -223,7 +225,14 @@ export class MeetingsService {
               meetingId: created.id,
             }),
           ),
-        );
+          this.activity.record({
+            projectId,
+            actorId: actor.id,
+            type: 'MEETING_CREATED',
+            entityType: 'Meeting',
+            entityId: created.id,
+          }),
+        ]);
         return created;
       });
   }
@@ -332,6 +341,15 @@ export class MeetingsService {
       );
     }
 
+    await this.activity.record({
+      projectId,
+      actorId: actor.id,
+      type: 'MEETING_UPDATED',
+      entityType: 'Meeting',
+      entityId: meetingId,
+      metadata: { fields: Object.keys(dto) },
+    });
+
     return updated;
   }
 
@@ -401,8 +419,8 @@ export class MeetingsService {
 
     // Best-effort, outside the transaction: only participants newly added by
     // this replacement (not ones already there before it) get notified.
-    await Promise.all(
-      newlyAddedIds.map((userId) =>
+    await Promise.all([
+      ...newlyAddedIds.map((userId) =>
         this.notifications.notifyMeetingAdded({
           userId,
           actorId: actor.id,
@@ -410,7 +428,15 @@ export class MeetingsService {
           meetingId,
         }),
       ),
-    );
+      this.activity.record({
+        projectId,
+        actorId: actor.id,
+        type: 'MEETING_PARTICIPANTS_CHANGED',
+        entityType: 'Meeting',
+        entityId: meetingId,
+        metadata: { participantIds },
+      }),
+    ]);
     return result;
   }
 
@@ -463,10 +489,23 @@ export class MeetingsService {
       );
     }
 
-    return this.prisma.meeting.findUniqueOrThrow({
+    const updated = await this.prisma.meeting.findUniqueOrThrow({
       where: { id: meetingId },
       select: MEETING_SELECT,
     });
+
+    // Metadata intentionally excludes note content (docs/DATABASE.md forbids
+    // storing full note/document bodies in activity/audit metadata).
+    await this.activity.record({
+      projectId,
+      actorId: actor.id,
+      type: 'MEETING_NOTES_UPDATED',
+      entityType: 'Meeting',
+      entityId: meetingId,
+      metadata: { revision: updated.revision },
+    });
+
+    return updated;
   }
 
   /** docs/RBAC.md "Eliminar: MEETINGS_DELETE y ser organizador, MANAGER u override." */
@@ -497,6 +536,14 @@ export class MeetingsService {
       data: { deletedAt: new Date(), deletedById: actor.id },
     });
     if (count === 0) throw new NotFoundException();
+
+    await this.activity.record({
+      projectId,
+      actorId: actor.id,
+      type: 'MEETING_DELETED',
+      entityType: 'Meeting',
+      entityId: meetingId,
+    });
   }
 
   /** docs/RBAC.md "Verifica que [el recurso] pertenezca al proyecto de la URL y que el actor vea el proyecto." (same rule as tasks). */

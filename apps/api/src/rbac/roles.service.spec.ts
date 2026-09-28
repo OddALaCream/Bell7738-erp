@@ -6,6 +6,7 @@ import {
 import { RolesService } from './roles.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { EffectivePermissionsService } from './effective-permissions.service.js';
+import type { AuditService } from '../audit/audit.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 
 const owner: AuthenticatedUser = {
@@ -126,10 +127,16 @@ function makeService(overrides?: {
       : vi.fn().mockResolvedValue(undefined),
   } as unknown as EffectivePermissionsService;
 
+  const audit = {
+    log: vi.fn().mockResolvedValue(undefined),
+    logInTransaction: vi.fn().mockResolvedValue(undefined),
+  } as unknown as AuditService;
+
   return {
-    service: new RolesService(prisma, effectivePermissions),
+    service: new RolesService(prisma, effectivePermissions, audit),
     prisma,
     effectivePermissions,
+    audit,
     tx,
   };
 }
@@ -295,28 +302,28 @@ describe('RolesService.update', () => {
 describe('RolesService.delete', () => {
   it('404s on a missing role', async () => {
     const { service } = makeService({ existingRole: null });
-    await expect(service.delete('missing')).rejects.toBeInstanceOf(
+    await expect(service.delete('missing', admin)).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });
 
   it('rejects deleting a role still assigned to a user', async () => {
     const { service } = makeService({ userRoleCount: 1 });
-    await expect(service.delete('role-1')).rejects.toBeInstanceOf(
+    await expect(service.delete('role-1', admin)).rejects.toBeInstanceOf(
       ConflictException,
     );
   });
 
   it('rejects deleting a role still referenced by a pending invitation', async () => {
     const { service } = makeService({ invitationRoleCount: 1 });
-    await expect(service.delete('role-1')).rejects.toBeInstanceOf(
+    await expect(service.delete('role-1', admin)).rejects.toBeInstanceOf(
       ConflictException,
     );
   });
 
   it('deletes an unassigned role', async () => {
     const { service, tx } = makeService();
-    await service.delete('role-1');
+    await service.delete('role-1', admin);
     expect(tx.rolePermission.deleteMany).toHaveBeenCalledWith({
       where: { roleId: 'role-1' },
     });

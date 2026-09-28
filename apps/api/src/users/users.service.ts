@@ -5,12 +5,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { AuditService } from '../audit/audit.service.js';
 import { normalizeEmail } from '../common/normalize-email.js';
 import { paginate, type PaginatedResult } from '../common/pagination.js';
 import type { ListUsersDto } from './dto/list-users.dto.js';
 import type { ListTeamDto } from './dto/list-team.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
 import type { UpdateProfileDto } from './dto/update-profile.dto.js';
+import type { AuditContext } from '../audit/audit-context.decorator.js';
+import type { AuditAction } from '../audit/audit-actions.js';
 
 /** Never includes passwordHash — see docs/API.md "nunca passwordHash ni tokens". */
 const ADMIN_USER_SELECT = {
@@ -44,7 +47,10 @@ type UserStatus = 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'DISABLED';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async list(query: ListUsersDto): Promise<PaginatedResult<unknown>> {
     const where = {
@@ -105,7 +111,12 @@ export class UsersService {
     return user;
   }
 
-  async update(userId: string, dto: UpdateUserDto, actorId: string) {
+  async update(
+    userId: string,
+    dto: UpdateUserDto,
+    actorId: string,
+    context?: AuditContext,
+  ) {
     const target = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!target) throw new NotFoundException();
     // docs/RBAC.md: the Owner's own record can't be touched by anyone else
@@ -146,11 +157,23 @@ export class UsersService {
         });
       }
 
+      // docs/ARCHITECTURE.md: a critical change and its durable audit
+      // event commit in the same transaction, not as a best-effort
+      // side-effect afterward.
+      await this.audit.logInTransaction(tx, {
+        actorId,
+        action: 'USER_UPDATED',
+        entityType: 'User',
+        entityId: userId,
+        metadata: { fields: Object.keys(dto) },
+        context,
+      });
+
       return updated;
     });
   }
 
-  async suspend(userId: string, actorId: string) {
+  async suspend(userId: string, actorId: string, context?: AuditContext) {
     // docs/RBAC.md: only ACTIVE accounts can be suspended — an INVITED
     // user has no password yet, and suspending then reactivating one would
     // otherwise hit the DB's ACTIVE-requires-password constraint directly.
@@ -159,19 +182,23 @@ export class UsersService {
       'SUSPENDED',
       { fromStatuses: ['ACTIVE'], revokeSessions: true },
       actorId,
+      'USER_SUSPENDED',
+      context,
     );
   }
 
-  async disable(userId: string, actorId: string) {
+  async disable(userId: string, actorId: string, context?: AuditContext) {
     return this.setStatus(
       userId,
       'DISABLED',
       { fromStatuses: ['ACTIVE', 'SUSPENDED'], revokeSessions: true },
       actorId,
+      'USER_DISABLED',
+      context,
     );
   }
 
-  async reactivate(userId: string, actorId: string) {
+  async reactivate(userId: string, actorId: string, context?: AuditContext) {
     // docs/API.md: reactivate only moves SUSPENDED -> ACTIVE, and never
     // restores sessions (a fresh login is required regardless).
     return this.setStatus(
@@ -179,6 +206,8 @@ export class UsersService {
       'ACTIVE',
       { fromStatuses: ['SUSPENDED'], revokeSessions: false },
       actorId,
+      'USER_REACTIVATED',
+      context,
     );
   }
 
@@ -187,6 +216,8 @@ export class UsersService {
     status: UserStatus,
     options: { fromStatuses: UserStatus[]; revokeSessions: boolean },
     actorId: string,
+    auditAction: AuditAction,
+    context?: AuditContext,
   ) {
     // docs/RBAC.md: "Un no-Owner ... no puede modificar su propio estado".
     if (userId === actorId) throw new ForbiddenException();
@@ -218,6 +249,14 @@ export class UsersService {
           data: { revokedAt: new Date() },
         });
       }
+
+      await this.audit.logInTransaction(tx, {
+        actorId,
+        action: auditAction,
+        entityType: 'User',
+        entityId: userId,
+        context,
+      });
 
       return tx.user.findUniqueOrThrow({
         where: { id: userId },

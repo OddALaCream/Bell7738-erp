@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
-import { EffectivePermissionsService } from './effective-permissions.service.js';
-import { PermissionsGuard } from './permissions.guard.js';
+import { AuditModule } from '../audit/audit.module.js';
+import { PermissionsModule } from './permissions.module.js';
 import { RolesController } from './roles.controller.js';
 import { RolesService } from './roles.service.js';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, PermissionsModule, AuditModule],
   controllers: [RolesController],
-  providers: [EffectivePermissionsService, PermissionsGuard, RolesService],
-  exports: [EffectivePermissionsService, PermissionsGuard, RolesService],
+  providers: [RolesService],
+  exports: [PermissionsModule, RolesService],
 })
 export class RbacModule {}

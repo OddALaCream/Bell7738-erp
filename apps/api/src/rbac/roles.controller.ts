@@ -13,7 +13,9 @@ import {
 } from '@nestjs/common';
 import { SessionAuthGuard } from '../auth/guards/session-auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import { CurrentAuditContext } from '../audit/audit-context.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
+import type { AuditContext } from '../audit/audit-context.decorator.js';
 import { PermissionsGuard } from './permissions.guard.js';
 import { RequirePermissions } from './require-permissions.decorator.js';
 import { RolesService } from './roles.service.js';
@@ -38,8 +40,12 @@ export class RolesController {
   @Post('roles')
   @UseGuards(PermissionsGuard)
   @RequirePermissions('ROLES_MANAGE')
-  create(@Body() dto: CreateRoleDto, @CurrentUser() actor: AuthenticatedUser) {
-    return this.roles.create(dto, actor);
+  create(
+    @Body() dto: CreateRoleDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @CurrentAuditContext() context: AuditContext,
+  ) {
+    return this.roles.create(dto, actor, context);
   }
 
   @Get('roles/:roleId')
@@ -56,15 +62,20 @@ export class RolesController {
     @Param('roleId', ParseUUIDPipe) roleId: string,
     @Body() dto: UpdateRoleDto,
     @CurrentUser() actor: AuthenticatedUser,
+    @CurrentAuditContext() context: AuditContext,
   ) {
-    return this.roles.update(roleId, dto, actor);
+    return this.roles.update(roleId, dto, actor, context);
   }
 
   @Delete('roles/:roleId')
   @UseGuards(PermissionsGuard)
   @RequirePermissions('ROLES_MANAGE')
   @HttpCode(HttpStatus.NO_CONTENT)
-  delete(@Param('roleId', ParseUUIDPipe) roleId: string): Promise<void> {
-    return this.roles.delete(roleId);
+  delete(
+    @Param('roleId', ParseUUIDPipe) roleId: string,
+    @CurrentUser() actor: AuthenticatedUser,
+    @CurrentAuditContext() context: AuditContext,
+  ): Promise<void> {
+    return this.roles.delete(roleId, actor, context);
   }
 }

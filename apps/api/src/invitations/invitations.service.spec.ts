@@ -3,6 +3,7 @@ import { InvitationsService } from './invitations.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { AppConfigService } from '../config/app-config.service.js';
 import type { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
+import type { AuditService } from '../audit/audit.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 
 const admin: AuthenticatedUser = {
@@ -60,10 +61,21 @@ function makeService(overrides?: {
     assertRolesExistAndActorCanGrant,
   } as unknown as EffectivePermissionsService;
 
+  const audit = {
+    log: vi.fn().mockResolvedValue(undefined),
+    logInTransaction: vi.fn().mockResolvedValue(undefined),
+  } as unknown as AuditService;
+
   return {
-    service: new InvitationsService(prisma, config, effectivePermissions),
+    service: new InvitationsService(
+      prisma,
+      config,
+      effectivePermissions,
+      audit,
+    ),
     prisma,
     effectivePermissions,
+    audit,
   };
 }
 

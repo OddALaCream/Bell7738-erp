@@ -7,6 +7,7 @@ import {
 import { ProjectMembersService } from './project-members.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { ProjectAccessService } from './project-access.service.js';
+import type { ActivityService } from '../activity/activity.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 
 const actor: AuthenticatedUser = {
@@ -74,10 +75,15 @@ function makeService(overrides?: {
     canManageProject: vi.fn().mockResolvedValue(overrides?.canManage ?? true),
   } as unknown as ProjectAccessService;
 
+  const activity = {
+    record: vi.fn().mockResolvedValue(undefined),
+  } as unknown as ActivityService;
+
   return {
-    service: new ProjectMembersService(prisma, access),
+    service: new ProjectMembersService(prisma, access, activity),
     prisma,
     access,
+    activity,
     tx,
   };
 }

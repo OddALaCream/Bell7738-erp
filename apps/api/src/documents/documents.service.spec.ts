@@ -9,6 +9,7 @@ import type { PrismaService } from '../prisma/prisma.service.js';
 import type { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
 import type { ProjectAccessService } from '../projects/project-access.service.js';
 import type { StorageService } from '../storage/storage.service.js';
+import type { ActivityService } from '../activity/activity.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 
 const owner: AuthenticatedUser = {
@@ -92,16 +93,22 @@ function makeService(overrides?: {
       .mockReturnValue(Readable.from([Buffer.from('file content')])),
   } as unknown as StorageService;
 
+  const activity = {
+    record: vi.fn().mockResolvedValue(undefined),
+  } as unknown as ActivityService;
+
   return {
     service: new DocumentsService(
       prisma,
       effectivePermissions,
       access,
       storage,
+      activity,
     ),
     prisma,
     access,
     storage,
+    activity,
   };
 }
 

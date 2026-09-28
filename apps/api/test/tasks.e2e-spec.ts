@@ -161,6 +161,11 @@ describe('Tasks (e2e)', () => {
     await prisma.projectMember.deleteMany({
       where: { projectId: { in: createdProjectIds } },
     });
+    // ActivityEvent.projectId is a real FK (onDelete: Restrict) — task
+    // create/update/complete/reopen/delete/assignee changes now record activity.
+    await prisma.activityEvent.deleteMany({
+      where: { projectId: { in: createdProjectIds } },
+    });
     await prisma.project.deleteMany({
       where: { id: { in: createdProjectIds } },
     });

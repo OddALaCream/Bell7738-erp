@@ -10,11 +10,13 @@ import { AppConfigService } from '../config/app-config.service.js';
 import { normalizeEmail } from '../common/normalize-email.js';
 import { paginate, type PaginatedResult } from '../common/pagination.js';
 import { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
+import { AuditService } from '../audit/audit.service.js';
 import { InvitationInvalidException } from './invitation.exceptions.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import type { CreateInvitationDto } from './dto/create-invitation.dto.js';
 import type { ListInvitationsDto } from './dto/list-invitations.dto.js';
 import type { AcceptInvitationDto } from './dto/accept-invitation.dto.js';
+import type { AuditContext } from '../audit/audit-context.decorator.js';
 
 const INVITATION_SELECT = {
   id: true,
@@ -44,6 +46,7 @@ export class InvitationsService {
     private readonly prisma: PrismaService,
     private readonly config: AppConfigService,
     private readonly effectivePermissions: EffectivePermissionsService,
+    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -59,7 +62,11 @@ export class InvitationsService {
     return `${this.config.app.webOrigin}/accept-invitation#token=${rawToken}`;
   }
 
-  async create(dto: CreateInvitationDto, actor: AuthenticatedUser) {
+  async create(
+    dto: CreateInvitationDto,
+    actor: AuthenticatedUser,
+    context?: AuditContext,
+  ) {
     const email = normalizeEmail(dto.email);
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -102,6 +109,19 @@ export class InvitationsService {
           })),
         });
       }
+
+      // docs/ARCHITECTURE.md: a critical change and its durable audit event
+      // commit in the same transaction, not as a best-effort side-effect
+      // afterward.
+      await this.audit.logInTransaction(tx, {
+        actorId: actor.id,
+        action: 'USER_INVITED',
+        entityType: 'User',
+        entityId: user.id,
+        metadata: { email },
+        context,
+      });
+
       return created;
     });
 
@@ -143,7 +163,11 @@ export class InvitationsService {
     );
   }
 
-  async resend(invitationId: string) {
+  async resend(
+    invitationId: string,
+    actor: AuthenticatedUser,
+    context?: AuditContext,
+  ) {
     const invitation = await this.prisma.invitation.findUnique({
       where: { id: invitationId },
       include: { user: true },
@@ -158,10 +182,20 @@ export class InvitationsService {
     const expiresAt = new Date(
       Date.now() + this.config.auth.invitationTtlHours * 60 * 60 * 1000,
     );
-    const updated = await this.prisma.invitation.update({
-      where: { id: invitationId },
-      data: { tokenHash: hashToken(rawToken), expiresAt, revokedAt: null },
-      select: INVITATION_SELECT,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.invitation.update({
+        where: { id: invitationId },
+        data: { tokenHash: hashToken(rawToken), expiresAt, revokedAt: null },
+        select: INVITATION_SELECT,
+      });
+      await this.audit.logInTransaction(tx, {
+        actorId: actor.id,
+        action: 'USER_INVITATION_RESENT',
+        entityType: 'User',
+        entityId: invitation.userId,
+        context,
+      });
+      return result;
     });
 
     return {
@@ -170,7 +204,11 @@ export class InvitationsService {
     };
   }
 
-  async revoke(invitationId: string): Promise<void> {
+  async revoke(
+    invitationId: string,
+    actor: AuthenticatedUser,
+    context?: AuditContext,
+  ): Promise<void> {
     const invitation = await this.prisma.invitation.findUnique({
       where: { id: invitationId },
       include: { user: true },
@@ -181,13 +219,25 @@ export class InvitationsService {
     // changes an already-active user.
     if (invitation.user.status !== 'INVITED' || invitation.revokedAt) return;
 
-    await this.prisma.invitation.update({
-      where: { id: invitationId },
-      data: { revokedAt: new Date() },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.invitation.update({
+        where: { id: invitationId },
+        data: { revokedAt: new Date() },
+      });
+      await this.audit.logInTransaction(tx, {
+        actorId: actor.id,
+        action: 'USER_INVITATION_REVOKED',
+        entityType: 'User',
+        entityId: invitation.userId,
+        context,
+      });
     });
   }
 
-  async accept(dto: AcceptInvitationDto): Promise<void> {
+  async accept(
+    dto: AcceptInvitationDto,
+    context?: AuditContext,
+  ): Promise<void> {
     const tokenHash = hashToken(dto.token);
     // Hashing first (pure CPU, essentially never throws) so the one thing
     // that can realistically fail happens *before* we claim the invitation
@@ -237,6 +287,16 @@ export class InvitationsService {
           })),
         });
       }
+
+      // actorId is the newly-activated user themselves — there's no other
+      // authenticated actor in this public, pre-login flow.
+      await this.audit.logInTransaction(tx, {
+        actorId: invitation.userId,
+        action: 'USER_INVITATION_ACCEPTED',
+        entityType: 'User',
+        entityId: invitation.userId,
+        context,
+      });
     });
   }
 

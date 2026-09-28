@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { AppConfigService } from '../config/app-config.service.js';
 import { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
 import { ProjectAccessService } from './project-access.service.js';
+import { ActivityService } from '../activity/activity.service.js';
 import { paginate, type PaginatedResult } from '../common/pagination.js';
 import { toDateOrNull, toDateOrUndefined } from '../common/dates.js';
 import type { AuthenticatedUser } from '../auth/types.js';
@@ -23,6 +24,7 @@ export class ProjectsService {
     private readonly config: AppConfigService,
     private readonly effectivePermissions: EffectivePermissionsService,
     private readonly access: ProjectAccessService,
+    private readonly activity: ActivityService,
   ) {}
 
   /** docs/RBAC.md "Listados aplican el scope en la consulta; no recuperan todo para filtrar en memoria." */
@@ -152,30 +154,42 @@ export class ProjectsService {
     this.assertDateRange(dto.startDate, dto.expectedEndDate);
     const completedAt = dto.status === 'COMPLETED' ? new Date() : null;
 
-    return this.prisma.$transaction(async (tx) => {
-      const project = await tx.project.create({
-        data: {
-          name: dto.name,
-          description: dto.description,
-          clientName: dto.clientName,
-          status: dto.status,
-          startDate: toDateOrUndefined(dto.startDate),
-          expectedEndDate: toDateOrUndefined(dto.expectedEndDate),
-          completedAt,
-          createdById: actor.id,
-        },
+    return this.prisma
+      .$transaction(async (tx) => {
+        const project = await tx.project.create({
+          data: {
+            name: dto.name,
+            description: dto.description,
+            clientName: dto.clientName,
+            status: dto.status,
+            startDate: toDateOrUndefined(dto.startDate),
+            expectedEndDate: toDateOrUndefined(dto.expectedEndDate),
+            completedAt,
+            createdById: actor.id,
+          },
+        });
+        // docs/RBAC.md: "El creador se añade como MANAGER."
+        await tx.projectMember.create({
+          data: {
+            projectId: project.id,
+            userId: actor.id,
+            role: 'MANAGER',
+            addedById: actor.id,
+          },
+        });
+        return project;
+      })
+      .then(async (created) => {
+        await this.activity.record({
+          projectId: created.id,
+          actorId: actor.id,
+          type: 'PROJECT_CREATED',
+          entityType: 'Project',
+          entityId: created.id,
+          metadata: { name: created.name },
+        });
+        return created;
       });
-      // docs/RBAC.md: "El creador se añade como MANAGER."
-      await tx.projectMember.create({
-        data: {
-          projectId: project.id,
-          userId: actor.id,
-          role: 'MANAGER',
-          addedById: actor.id,
-        },
-      });
-      return project;
-    });
   }
 
   async update(
@@ -234,7 +248,18 @@ export class ProjectsService {
     });
     if (count === 0) throw new NotFoundException();
 
-    return this.prisma.project.findUniqueOrThrow({ where: { id: projectId } });
+    const updated = await this.prisma.project.findUniqueOrThrow({
+      where: { id: projectId },
+    });
+    await this.activity.record({
+      projectId,
+      actorId: actor.id,
+      type: 'PROJECT_UPDATED',
+      entityType: 'Project',
+      entityId: projectId,
+      metadata: { fields: Object.keys(dto) },
+    });
+    return updated;
   }
 
   async delete(projectId: string, actor: AuthenticatedUser): Promise<void> {
@@ -251,6 +276,14 @@ export class ProjectsService {
       data: { deletedAt: new Date(), deletedById: actor.id },
     });
     if (count === 0) throw new NotFoundException();
+
+    await this.activity.record({
+      projectId,
+      actorId: actor.id,
+      type: 'PROJECT_DELETED',
+      entityType: 'Project',
+      entityId: projectId,
+    });
   }
 
   private assertDateRange(

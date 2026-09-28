@@ -130,6 +130,11 @@ describe('Notifications (e2e)', () => {
     await prisma.projectMember.deleteMany({
       where: { projectId: { in: createdProjectIds } },
     });
+    // ActivityEvent.projectId is a real FK (onDelete: Restrict) — the task/
+    // meeting mutations above now record activity alongside notifications.
+    await prisma.activityEvent.deleteMany({
+      where: { projectId: { in: createdProjectIds } },
+    });
     await prisma.project.deleteMany({
       where: { id: { in: createdProjectIds } },
     });

@@ -147,6 +147,11 @@ describe('Tasks (e2e)', () => {
   });
 
   afterAll(async () => {
+    // Notification.userId is onDelete: Restrict — must go before deleting
+    // the users, now that task assignment actually creates notifications.
+    await prisma.notification.deleteMany({
+      where: { userId: { in: createdUserIds } },
+    });
     await prisma.taskAssignee.deleteMany({
       where: { task: { projectId: { in: createdProjectIds } } },
     });

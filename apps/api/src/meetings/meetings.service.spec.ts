@@ -8,6 +8,7 @@ import { MeetingNotesRevisionConflictException } from './meeting.exceptions.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
 import type { ProjectAccessService } from '../projects/project-access.service.js';
+import type { NotificationsService } from '../notifications/notifications.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 
 const owner: AuthenticatedUser = {
@@ -128,11 +129,22 @@ function makeService(overrides?: {
       .mockResolvedValue(overrides?.hasMemberLevelAccess ?? true),
   } as unknown as ProjectAccessService;
 
+  const notifications = {
+    notifyMeetingAdded: vi.fn().mockResolvedValue(undefined),
+    notifyMeetingUpdated: vi.fn().mockResolvedValue(undefined),
+  } as unknown as NotificationsService;
+
   return {
-    service: new MeetingsService(prisma, effectivePermissions, access),
+    service: new MeetingsService(
+      prisma,
+      effectivePermissions,
+      access,
+      notifications,
+    ),
     prisma,
     access,
     effectivePermissions,
+    notifications,
     tx,
   };
 }
@@ -216,6 +228,20 @@ describe('MeetingsService.create', () => {
       service.create('proj-1', createDto, owner),
     ).resolves.toBeDefined();
   });
+
+  it('notifies invited participants but not the organizer themselves', async () => {
+    const { service, notifications } = makeService();
+    await service.create('proj-1', createDto, actor);
+    expect(notifications.notifyMeetingAdded).toHaveBeenCalledWith({
+      userId: 'participant-1',
+      actorId: actor.id,
+      projectId: 'proj-1',
+      meetingId: 'meeting-1',
+    });
+    expect(notifications.notifyMeetingAdded).not.toHaveBeenCalledWith(
+      expect.objectContaining({ userId: actor.id }),
+    );
+  });
 });
 
 describe('MeetingsService.update', () => {
@@ -293,6 +319,93 @@ describe('MeetingsService.update', () => {
       service.update('proj-1', 'meeting-1', dto, actor),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('notifies other participants who are still active project members when the title/schedule significantly changes', async () => {
+    const { service, notifications } = makeService({
+      effectiveKeys: new Set(['MEETINGS_UPDATE']),
+      membership: { role: 'MEMBER' },
+      meeting: {
+        ...baseMeeting,
+        organizerId: actor.id,
+        participants: [
+          { userId: actor.id, addedAt: new Date(), user: {} },
+          { userId: 'participant-1', addedAt: new Date(), user: {} },
+        ],
+      },
+    });
+    await service.update('proj-1', 'meeting-1', { title: 'New title' }, actor);
+    expect(notifications.notifyMeetingUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'participant-1',
+        actorId: actor.id,
+        meetingId: 'meeting-1',
+      }),
+    );
+    // Never notifies the actor about their own change.
+    expect(notifications.notifyMeetingUpdated).not.toHaveBeenCalledWith(
+      expect.objectContaining({ userId: actor.id }),
+    );
+  });
+
+  // Regression coverage for a Phase 11 Codex adversarial review finding: a
+  // MeetingParticipant row can outlive its owner's project membership
+  // (removing someone from a project doesn't cascade-remove old meeting
+  // participation), so a former member must not keep getting notified.
+  it('does not notify a participant who is no longer an active project member', async () => {
+    const { service, notifications } = makeService({
+      effectiveKeys: new Set(['MEETINGS_UPDATE']),
+      membership: null,
+      meeting: {
+        ...baseMeeting,
+        organizerId: actor.id,
+        participants: [
+          { userId: 'former-member-1', addedAt: new Date(), user: {} },
+        ],
+      },
+    });
+    await service.update('proj-1', 'meeting-1', { title: 'New title' }, actor);
+    expect(notifications.notifyMeetingUpdated).not.toHaveBeenCalled();
+  });
+
+  it('does not notify when the only change is the description (not significant)', async () => {
+    const { service, notifications } = makeService({
+      effectiveKeys: new Set(['MEETINGS_UPDATE']),
+      meeting: {
+        ...baseMeeting,
+        organizerId: actor.id,
+        participants: [
+          { userId: 'participant-1', addedAt: new Date(), user: {} },
+        ],
+      },
+    });
+    await service.update(
+      'proj-1',
+      'meeting-1',
+      { description: 'New agenda notes' },
+      actor,
+    );
+    expect(notifications.notifyMeetingUpdated).not.toHaveBeenCalled();
+  });
+
+  it('does not notify when a field is resubmitted with its existing value', async () => {
+    const { service, notifications } = makeService({
+      effectiveKeys: new Set(['MEETINGS_UPDATE']),
+      meeting: {
+        ...baseMeeting,
+        organizerId: actor.id,
+        participants: [
+          { userId: 'participant-1', addedAt: new Date(), user: {} },
+        ],
+      },
+    });
+    await service.update(
+      'proj-1',
+      'meeting-1',
+      { title: baseMeeting.title },
+      actor,
+    );
+    expect(notifications.notifyMeetingUpdated).not.toHaveBeenCalled();
+  });
 });
 
 describe('MeetingsService.setParticipants', () => {
@@ -335,6 +448,37 @@ describe('MeetingsService.setParticipants', () => {
       data: [
         { meetingId: 'meeting-1', userId: 'organizer-1', addedById: actor.id },
       ],
+    });
+  });
+
+  it('notifies only newly-added participants, not ones already there before the replacement', async () => {
+    const { service, notifications } = makeService({
+      effectiveKeys: new Set(['MEETINGS_UPDATE']),
+      meeting: {
+        ...baseMeeting,
+        organizerId: actor.id,
+        participants: [
+          { userId: actor.id, addedAt: new Date(), user: {} },
+          { userId: 'participant-1', addedAt: new Date(), user: {} },
+        ],
+      },
+      activeUsers: [{ id: 'participant-1' }, { id: 'participant-2' }],
+      activeMembers: [{ userId: 'participant-1' }, { userId: 'participant-2' }],
+    });
+    await service.setParticipants(
+      'proj-1',
+      'meeting-1',
+      { participantIds: ['participant-1', 'participant-2'] },
+      actor,
+    );
+    expect(notifications.notifyMeetingAdded).not.toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'participant-1' }),
+    );
+    expect(notifications.notifyMeetingAdded).toHaveBeenCalledWith({
+      userId: 'participant-2',
+      actorId: actor.id,
+      projectId: 'proj-1',
+      meetingId: 'meeting-1',
     });
   });
 });

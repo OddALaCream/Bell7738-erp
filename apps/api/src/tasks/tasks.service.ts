@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service.js';
 import { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
 import { ProjectAccessService } from '../projects/project-access.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { paginate, type PaginatedResult } from '../common/pagination.js';
 import { toDateOrUndefined } from '../common/dates.js';
 import type { AuthenticatedUser } from '../auth/types.js';
@@ -54,6 +55,7 @@ export class TasksService {
     private readonly prisma: PrismaService,
     private readonly effectivePermissions: EffectivePermissionsService,
     private readonly access: ProjectAccessService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async list(
@@ -141,41 +143,57 @@ export class TasksService {
     this.assertDateRange(dto.startDate, dto.dueDate);
     await this.assertValidAssignees(projectId, dto.assigneeIds);
 
-    return this.prisma.$transaction(async (tx) => {
-      // FOR UPDATE locks the project row for the rest of this transaction:
-      // a concurrent soft-delete's UPDATE needs the same row lock, so it
-      // either committed before us (and we correctly see deletedAt set) or
-      // it blocks until after we commit. A plain read-then-create here
-      // would leave a gap where the project could be deleted in between,
-      // leaving an orphaned-looking task under it.
-      const [project] = await tx.$queryRaw<Array<{ deletedAt: Date | null }>>`
+    return this.prisma
+      .$transaction(async (tx) => {
+        // FOR UPDATE locks the project row for the rest of this transaction:
+        // a concurrent soft-delete's UPDATE needs the same row lock, so it
+        // either committed before us (and we correctly see deletedAt set) or
+        // it blocks until after we commit. A plain read-then-create here
+        // would leave a gap where the project could be deleted in between,
+        // leaving an orphaned-looking task under it.
+        const [project] = await tx.$queryRaw<Array<{ deletedAt: Date | null }>>`
         SELECT "deletedAt" FROM "projects" WHERE "id" = ${projectId}::uuid FOR UPDATE
       `;
-      if (!project || project.deletedAt) throw new NotFoundException();
+        if (!project || project.deletedAt) throw new NotFoundException();
 
-      const task = await tx.task.create({
-        data: {
-          projectId,
-          title: dto.title,
-          description: dto.description,
-          startDate: new Date(dto.startDate),
-          dueDate: new Date(dto.dueDate),
-          status: 'PENDING',
-          createdById: actor.id,
-        },
+        const task = await tx.task.create({
+          data: {
+            projectId,
+            title: dto.title,
+            description: dto.description,
+            startDate: new Date(dto.startDate),
+            dueDate: new Date(dto.dueDate),
+            status: 'PENDING',
+            createdById: actor.id,
+          },
+        });
+        await tx.taskAssignee.createMany({
+          data: dto.assigneeIds.map((userId) => ({
+            taskId: task.id,
+            userId,
+            assignedById: actor.id,
+          })),
+        });
+        return tx.task.findUniqueOrThrow({
+          where: { id: task.id },
+          select: TASK_SELECT,
+        });
+      })
+      .then(async (created) => {
+        // Best-effort, outside the transaction: a notification failure must
+        // never undo or fail an already-committed task creation.
+        await Promise.all(
+          dto.assigneeIds.map((userId) =>
+            this.notifications.notifyTaskAssigned({
+              userId,
+              actorId: actor.id,
+              projectId,
+              taskId: created.id,
+            }),
+          ),
+        );
+        return created;
       });
-      await tx.taskAssignee.createMany({
-        data: dto.assigneeIds.map((userId) => ({
-          taskId: task.id,
-          userId,
-          assignedById: actor.id,
-        })),
-      });
-      return tx.task.findUniqueOrThrow({
-        where: { id: task.id },
-        select: TASK_SELECT,
-      });
-    });
   }
 
   /**
@@ -348,8 +366,14 @@ export class TasksService {
       throw new ForbiddenException();
 
     await this.assertValidAssignees(projectId, dto.assigneeIds);
+    const previousAssigneeIds = new Set(
+      task.assignees.map((assignee) => assignee.userId),
+    );
+    const newlyAddedAssigneeIds = dto.assigneeIds.filter(
+      (userId) => !previousAssigneeIds.has(userId),
+    );
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const stillLive = await tx.task.findFirst({
         where: {
           id: taskId,
@@ -385,6 +409,20 @@ export class TasksService {
       if (!fresh) throw new NotFoundException();
       return fresh;
     });
+
+    // Best-effort, outside the transaction: only newly-added assignees (not
+    // ones who were already assigned before this replacement) get notified.
+    await Promise.all(
+      newlyAddedAssigneeIds.map((userId) =>
+        this.notifications.notifyTaskAssigned({
+          userId,
+          actorId: actor.id,
+          projectId,
+          taskId,
+        }),
+      ),
+    );
+    return result;
   }
 
   /** docs/RBAC.md "Verifica que la tarea pertenezca al proyecto de la URL y que el actor vea el proyecto." */

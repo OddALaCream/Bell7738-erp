@@ -8,6 +8,7 @@ import { TasksService } from './tasks.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
 import type { ProjectAccessService } from '../projects/project-access.service.js';
+import type { NotificationsService } from '../notifications/notifications.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 
 const owner: AuthenticatedUser = {
@@ -127,11 +128,21 @@ function makeService(overrides?: {
       .mockResolvedValue(overrides?.hasMemberLevelAccess ?? true),
   } as unknown as ProjectAccessService;
 
+  const notifications = {
+    notifyTaskAssigned: vi.fn().mockResolvedValue(undefined),
+  } as unknown as NotificationsService;
+
   return {
-    service: new TasksService(prisma, effectivePermissions, access),
+    service: new TasksService(
+      prisma,
+      effectivePermissions,
+      access,
+      notifications,
+    ),
     prisma,
     access,
     effectivePermissions,
+    notifications,
     tx,
   };
 }
@@ -197,6 +208,17 @@ describe('TasksService.create', () => {
     await expect(
       service.create('proj-1', createDto, owner),
     ).resolves.toBeDefined();
+  });
+
+  it('notifies each assignee of the new task', async () => {
+    const { service, notifications } = makeService();
+    await service.create('proj-1', createDto, actor);
+    expect(notifications.notifyTaskAssigned).toHaveBeenCalledWith({
+      userId: 'assignee-1',
+      actorId: actor.id,
+      projectId: 'proj-1',
+      taskId: 'task-1',
+    });
   });
 });
 
@@ -472,6 +494,34 @@ describe('TasksService.setAssignees', () => {
     await expect(
       service.setAssignees('proj-1', 'task-1', dto, actor),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('notifies only newly-added assignees, not ones already assigned before the replacement', async () => {
+    const { service, notifications } = makeService({
+      effectiveKeys: new Set(['TASKS_UPDATE']),
+      task: {
+        ...baseTask,
+        createdById: actor.id,
+        assignees: [{ userId: 'assignee-1', assignedAt: new Date(), user: {} }],
+      },
+      activeUsers: [{ id: 'assignee-1' }, { id: 'assignee-2' }],
+      activeMembers: [{ userId: 'assignee-1' }, { userId: 'assignee-2' }],
+    });
+    await service.setAssignees(
+      'proj-1',
+      'task-1',
+      { assigneeIds: ['assignee-1', 'assignee-2'] },
+      actor,
+    );
+    expect(notifications.notifyTaskAssigned).not.toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'assignee-1' }),
+    );
+    expect(notifications.notifyTaskAssigned).toHaveBeenCalledWith({
+      userId: 'assignee-2',
+      actorId: actor.id,
+      projectId: 'proj-1',
+      taskId: 'task-1',
+    });
   });
 });
 

@@ -147,6 +147,11 @@ describe('Meetings (e2e)', () => {
   });
 
   afterAll(async () => {
+    // Notification.userId is onDelete: Restrict — must go before deleting
+    // the users, now that meeting participation/updates create notifications.
+    await prisma.notification.deleteMany({
+      where: { userId: { in: createdUserIds } },
+    });
     await prisma.meetingParticipant.deleteMany({
       where: { meeting: { projectId: { in: createdProjectIds } } },
     });

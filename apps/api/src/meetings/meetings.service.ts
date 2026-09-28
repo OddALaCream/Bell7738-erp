@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service.js';
 import { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
 import { ProjectAccessService } from '../projects/project-access.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { paginate, type PaginatedResult } from '../common/pagination.js';
 import { toDateOrUndefined } from '../common/dates.js';
 import { MeetingNotesRevisionConflictException } from './meeting.exceptions.js';
@@ -67,6 +68,7 @@ export class MeetingsService {
     private readonly prisma: PrismaService,
     private readonly effectivePermissions: EffectivePermissionsService,
     private readonly access: ProjectAccessService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async list(
@@ -173,41 +175,57 @@ export class MeetingsService {
     // docs/API.md: "El organizador es el actor y se incluye como participante."
     const participantIds = [actor.id, ...invitedIds];
 
-    return this.prisma.$transaction(async (tx) => {
-      // FOR UPDATE locks the project row for the rest of this transaction:
-      // a concurrent soft-delete's UPDATE needs the same row lock, so it
-      // either committed before us (and we correctly see deletedAt set) or
-      // it blocks until after we commit (and the meeting is created under
-      // the project as it existed at the moment we actually won the lock).
-      // A plain read-then-create here would leave a gap where the project
-      // could be deleted in between, leaving an orphaned-looking meeting.
-      const [project] = await tx.$queryRaw<Array<{ deletedAt: Date | null }>>`
+    return this.prisma
+      .$transaction(async (tx) => {
+        // FOR UPDATE locks the project row for the rest of this transaction:
+        // a concurrent soft-delete's UPDATE needs the same row lock, so it
+        // either committed before us (and we correctly see deletedAt set) or
+        // it blocks until after we commit (and the meeting is created under
+        // the project as it existed at the moment we actually won the lock).
+        // A plain read-then-create here would leave a gap where the project
+        // could be deleted in between, leaving an orphaned-looking meeting.
+        const [project] = await tx.$queryRaw<Array<{ deletedAt: Date | null }>>`
         SELECT "deletedAt" FROM "projects" WHERE "id" = ${projectId}::uuid FOR UPDATE
       `;
-      if (!project || project.deletedAt) throw new NotFoundException();
+        if (!project || project.deletedAt) throw new NotFoundException();
 
-      const meeting = await tx.meeting.create({
-        data: {
-          projectId,
-          title: dto.title,
-          description: dto.description,
-          startsAt: new Date(dto.startsAt),
-          endsAt: new Date(dto.endsAt),
-          organizerId: actor.id,
-        },
+        const meeting = await tx.meeting.create({
+          data: {
+            projectId,
+            title: dto.title,
+            description: dto.description,
+            startsAt: new Date(dto.startsAt),
+            endsAt: new Date(dto.endsAt),
+            organizerId: actor.id,
+          },
+        });
+        await tx.meetingParticipant.createMany({
+          data: participantIds.map((userId) => ({
+            meetingId: meeting.id,
+            userId,
+            addedById: actor.id,
+          })),
+        });
+        return tx.meeting.findUniqueOrThrow({
+          where: { id: meeting.id },
+          select: MEETING_SELECT,
+        });
+      })
+      .then(async (created) => {
+        // Best-effort, outside the transaction: a notification failure must
+        // never undo or fail an already-committed meeting creation.
+        await Promise.all(
+          invitedIds.map((userId) =>
+            this.notifications.notifyMeetingAdded({
+              userId,
+              actorId: actor.id,
+              projectId,
+              meetingId: created.id,
+            }),
+          ),
+        );
+        return created;
       });
-      await tx.meetingParticipant.createMany({
-        data: participantIds.map((userId) => ({
-          meetingId: meeting.id,
-          userId,
-          addedById: actor.id,
-        })),
-      });
-      return tx.meeting.findUniqueOrThrow({
-        where: { id: meeting.id },
-        select: MEETING_SELECT,
-      });
-    });
   }
 
   /**
@@ -244,6 +262,16 @@ export class MeetingsService {
     const nextEndsAt = dto.endsAt !== undefined ? dto.endsAt : meeting.endsAt;
     this.assertTimeRange(nextStartsAt, nextEndsAt);
 
+    // "Significant" per docs/API.md: title or schedule actually changing
+    // value, not merely being present in the request with their existing
+    // value (nor a description-only edit).
+    const isSignificantChange =
+      (dto.title !== undefined && dto.title !== meeting.title) ||
+      (dto.startsAt !== undefined &&
+        new Date(dto.startsAt).getTime() !== meeting.startsAt.getTime()) ||
+      (dto.endsAt !== undefined &&
+        new Date(dto.endsAt).getTime() !== meeting.endsAt.getTime());
+
     const { count } = await this.prisma.meeting.updateMany({
       where: {
         id: meetingId,
@@ -266,10 +294,45 @@ export class MeetingsService {
     });
     if (count === 0) throw new NotFoundException();
 
-    return this.prisma.meeting.findUniqueOrThrow({
+    const updated = await this.prisma.meeting.findUniqueOrThrow({
       where: { id: meetingId },
       select: MEETING_SELECT,
     });
+
+    if (isSignificantChange) {
+      // Best-effort, after the write has already committed. A
+      // MeetingParticipant row can outlive its owner's project membership
+      // (removing someone from a project doesn't cascade-remove their old
+      // meeting participation), so re-check current active membership here
+      // rather than notifying every historically-stored participant —
+      // otherwise a former project member would keep getting notified about
+      // a project they can no longer see.
+      const recipientsToNotify = await Promise.all(
+        meeting.participants
+          .filter((participant) => participant.userId !== actor.id)
+          .map(async (participant) => {
+            const stillAMember = await this.access.getActiveMembership(
+              participant.userId,
+              projectId,
+            );
+            return stillAMember ? participant.userId : null;
+          }),
+      );
+      await Promise.all(
+        recipientsToNotify
+          .filter((userId): userId is string => userId !== null)
+          .map((userId) =>
+            this.notifications.notifyMeetingUpdated({
+              userId,
+              actorId: actor.id,
+              projectId,
+              meetingId,
+            }),
+          ),
+      );
+    }
+
+    return updated;
   }
 
   /** docs/API.md "Reemplaza participantes válidos sin retirar accidentalmente al organizador." */
@@ -296,8 +359,14 @@ export class MeetingsService {
     );
     await this.assertValidParticipants(projectId, invitedIds);
     const participantIds = [meeting.organizerId, ...invitedIds];
+    const previousParticipantIds = new Set(
+      meeting.participants.map((participant) => participant.userId),
+    );
+    const newlyAddedIds = participantIds.filter(
+      (userId) => !previousParticipantIds.has(userId),
+    );
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const stillLive = await tx.meeting.findFirst({
         where: {
           id: meetingId,
@@ -329,6 +398,20 @@ export class MeetingsService {
       if (!fresh) throw new NotFoundException();
       return fresh;
     });
+
+    // Best-effort, outside the transaction: only participants newly added by
+    // this replacement (not ones already there before it) get notified.
+    await Promise.all(
+      newlyAddedIds.map((userId) =>
+        this.notifications.notifyMeetingAdded({
+          userId,
+          actorId: actor.id,
+          projectId,
+          meetingId,
+        }),
+      ),
+    );
+    return result;
   }
 
   /**

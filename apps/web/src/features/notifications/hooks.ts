@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as api from './api';
 
 export const notificationKeys = {
@@ -15,10 +15,12 @@ export function useUnreadCount() {
   });
 }
 
-export function useNotifications(params: api.ListNotificationsParams) {
+export function useNotifications(params: api.ListNotificationsParams, options: { refetchInterval?: number | false } = {}) {
   return useQuery({
     queryKey: notificationKeys.list(params),
     queryFn: () => api.listNotifications(params),
+    placeholderData: keepPreviousData,
+    refetchInterval: options.refetchInterval,
   });
 }
 

@@ -1,33 +1,47 @@
+import { useState } from 'react';
 import { Bell, CheckCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatDistanceToNow } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { EmptyState } from '@/components/common/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { notificationHref, notificationTitle } from './api';
+import { useProjectNames } from '@/features/projects/hooks';
+import { notificationHref } from './api';
+import { NotificationItem } from './notification-item';
 import { useMarkAllNotificationsRead, useMarkNotificationRead, useNotifications, useUnreadCount } from './hooks';
 import type { Notification } from '@/types/domain';
 
+const RECENT_COUNT = 8;
+const OPEN_REFRESH_MS = 30_000;
+
+/** docs/UI-UX.md "Notificaciones": unread counter + popover with the latest, click marks read and navigates. */
 export function NotificationBell() {
   const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
   const unread = useUnreadCount();
-  const recent = useNotifications({ pageSize: 8 });
+  const recent = useNotifications({ pageSize: RECENT_COUNT }, { refetchInterval: open ? OPEN_REFRESH_MS : false });
+  const projectNames = useProjectNames(open);
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
 
+  function handleOpenChange(next: boolean) {
+    setOpen(next);
+    // The list may be up to a poll interval behind the counter; show current data on open.
+    if (next) recent.refetch();
+  }
+
   function handleSelect(notification: Notification) {
     if (!notification.readAt) markRead.mutate(notification.id);
-    const href = notificationHref(notification);
-    navigate(href ?? '/notifications');
+    setOpen(false);
+    // Deleted or no-longer-visible resources land on the destination's safe not-found state.
+    navigate(notificationHref(notification) ?? '/notifications');
   }
 
   const count = unread.data ?? 0;
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
@@ -37,7 +51,10 @@ export function NotificationBell() {
         >
           <Bell />
           {count > 0 && (
-            <span className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
+            <span
+              aria-hidden="true"
+              className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground"
+            >
               {count > 9 ? '9+' : count}
             </span>
           )}
@@ -47,8 +64,14 @@ export function NotificationBell() {
         <div className="flex items-center justify-between px-3 py-2">
           <p className="text-sm font-semibold">Notificaciones</p>
           {count > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => markAllRead.mutate()} className="h-7 px-2 text-xs">
-              <CheckCheck className="size-3.5" /> Marcar todas
+            <Button
+              variant="ghost"
+              size="sm"
+              loading={markAllRead.isPending}
+              onClick={() => markAllRead.mutate()}
+              className="h-7 px-2 text-xs"
+            >
+              <CheckCheck className="size-3.5" /> Marcar todas como leídas
             </Button>
           )}
         </div>
@@ -60,25 +83,22 @@ export function NotificationBell() {
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>
+          ) : recent.isError ? (
+            <div role="alert" className="space-y-2 p-4 text-center text-sm">
+              <p>No se pudieron cargar las notificaciones.</p>
+              <Button variant="outline" size="sm" onClick={() => recent.refetch()}>
+                Reintentar
+              </Button>
+            </div>
           ) : recent.data && recent.data.data.length > 0 ? (
             <ul>
               {recent.data.data.map((notification) => (
                 <li key={notification.id}>
-                  <button
-                    type="button"
-                    onClick={() => handleSelect(notification)}
-                    className="flex w-full flex-col gap-0.5 px-3 py-2.5 text-left text-sm hover:bg-accent"
-                  >
-                    <span className="flex items-center gap-2">
-                      {!notification.readAt && <span className="size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />}
-                      <span className={notification.readAt ? 'text-muted-foreground' : 'font-medium'}>
-                        {notificationTitle(notification)}
-                      </span>
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true, locale: es })}
-                    </span>
-                  </button>
+                  <NotificationItem
+                    notification={notification}
+                    projectName={notification.projectId ? projectNames.get(notification.projectId) : undefined}
+                    onSelect={handleSelect}
+                  />
                 </li>
               ))}
             </ul>
@@ -88,7 +108,15 @@ export function NotificationBell() {
         </div>
         <Separator />
         <div className="p-2">
-          <Button variant="ghost" size="sm" className="w-full" onClick={() => navigate('/notifications')}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full"
+            onClick={() => {
+              setOpen(false);
+              navigate('/notifications');
+            }}
+          >
             Ver historial completo
           </Button>
         </div>

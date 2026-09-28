@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { ProjectRole } from '@/types/domain';
@@ -10,8 +11,18 @@ export const projectKeys = {
   members: (id: string) => ['projects', id, 'members'] as const,
 };
 
-export function useProjects(params: api.ListProjectsParams) {
-  return useQuery({ queryKey: projectKeys.list(params), queryFn: () => api.listProjects(params) });
+export function useProjects(params: api.ListProjectsParams, options: { enabled?: boolean } = {}) {
+  return useQuery({ queryKey: projectKeys.list(params), queryFn: () => api.listProjects(params), enabled: options.enabled });
+}
+
+/**
+ * id → name for the projects the user can see (first 100), for labelling
+ * things that only carry a `projectId`. Pass `enabled: false` until the
+ * labels are actually on screen.
+ */
+export function useProjectNames(enabled = true): Map<string, string> {
+  const query = useProjects({ pageSize: 100 }, { enabled });
+  return useMemo(() => new Map((query.data?.data ?? []).map((project) => [project.id, project.name] as const)), [query.data]);
 }
 
 export function useProject(projectId: string | undefined) {

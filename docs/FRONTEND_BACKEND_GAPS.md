@@ -193,3 +193,14 @@ early. **Suggested backend fix:** expose them, e.g. in `GET /auth/me` or a small
 resolved from the project's members; an uploader who is no longer a member
 shows as "un usuario que ya no es miembro". **Suggested backend fix:** include
 `uploadedBy: { id, firstName, lastName }` in the document summary.
+
+## Web Push has no backend endpoints
+
+`docs/PRODUCT.md` and `docs/UI-UX.md` treat Web Push as an optional,
+progressive enhancement. The API only defines VAPID env variables
+(`env.schema.ts`); there is no endpoint to register or remove a push
+subscription and no delivery code. The frontend therefore ships no push
+opt-in UI (nothing to prompt for, no permission banners), and the in-app bell
+plus `/notifications` are the only channel, as the docs require to always work.
+Once the backend exposes `POST/DELETE /notifications/push-subscription`, the
+opt-in belongs in `/profile` and the service worker's `push` handler.

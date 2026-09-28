@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/ui/avatar';
 import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
-import { ErrorState } from '@/components/common/error-state';
+import { QueryErrorState } from '@/components/common/query-state';
 import { useAuth } from '@/features/auth/auth-context';
 import { fullName } from '@/lib/utils';
 import { formatDateOnly } from '@/lib/dates';
@@ -56,7 +56,7 @@ export function TaskDetailSheet({
               <Spinner />
             </div>
           )}
-          {taskQuery.isError && <ErrorState error={taskQuery.error} onRetry={() => taskQuery.refetch()} />}
+          {taskQuery.isError && <QueryErrorState error={taskQuery.error} onRetry={() => taskQuery.refetch()} />}
           {task && user && (
             <>
               <SheetHeader>

@@ -3,6 +3,7 @@ import {
   ExecutionContext,
   Injectable,
   NestInterceptor,
+  StreamableFile,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { Observable, map } from 'rxjs';
@@ -12,7 +13,10 @@ import { Observable, map } from 'rxjs';
  * A handler that already returns { data, meta } (paginated collections)
  * passes through unchanged; a 204/void response stays empty. Health
  * endpoints live outside the /api/v1 product API and its conventions, so
- * they're left untouched.
+ * they're left untouched. A StreamableFile (document downloads) must also
+ * pass through untouched — Nest's response layer specifically detects that
+ * type to pipe it as a binary stream, which wrapping it in { data: ... }
+ * would break.
  */
 @Injectable()
 export class ResponseInterceptor implements NestInterceptor {
@@ -25,6 +29,7 @@ export class ResponseInterceptor implements NestInterceptor {
     return next.handle().pipe(
       map((value: unknown) => {
         if (value === undefined) return value;
+        if (value instanceof StreamableFile) return value;
         if (value !== null && typeof value === 'object' && 'data' in value)
           return value;
         return { data: value };

@@ -10,6 +10,7 @@ import { InvitationsModule } from './invitations/invitations.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
 import { TasksModule } from './tasks/tasks.module.js';
 import { MeetingsModule } from './meetings/meetings.module.js';
+import { DocumentsModule } from './documents/documents.module.js';
 import { AppThrottlerGuard } from './common/guards/app-throttler.guard.js';
 
 @Module({
@@ -23,6 +24,7 @@ import { AppThrottlerGuard } from './common/guards/app-throttler.guard.js';
     ProjectsModule,
     TasksModule,
     MeetingsModule,
+    DocumentsModule,
     // docs/SECURITY.md: baseline rate limiting; login/refresh set tighter
     // per-route limits via @Throttle.
     ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 120 }] }),

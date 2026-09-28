@@ -59,6 +59,7 @@ export class AppConfigService {
     return {
       root: this.get('STORAGE_ROOT'),
       maxUploadBytes: this.get('MAX_UPLOAD_BYTES'),
+      allowedExtensions: new Set(this.get('DOCUMENT_ALLOWED_EXTENSIONS')),
     };
   }
 

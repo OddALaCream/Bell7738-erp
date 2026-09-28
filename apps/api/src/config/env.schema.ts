@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { EXTENSION_MIME_MAP } from '../storage/file-signatures.js';
+
+const DEFAULT_ALLOWED_EXTENSIONS = Object.keys(EXTENSION_MIME_MAP).join(',');
 
 const booleanFromString = z
   .union([z.literal('true'), z.literal('false')])
@@ -37,6 +40,25 @@ export const envSchema = z
       .int()
       .positive()
       .default(25 * 1024 * 1024),
+    // docs/DEPLOYMENT.md "Storage": allowlist de tipos/extensiones en una
+    // configuración validada. Comma-separated extensions (no leading dots).
+    DOCUMENT_ALLOWED_EXTENSIONS: z
+      .string()
+      .min(1)
+      .default(DEFAULT_ALLOWED_EXTENSIONS)
+      .transform((value) =>
+        value
+          .split(',')
+          .map((extension) => extension.trim().toLowerCase())
+          .filter((extension) => extension.length > 0),
+      )
+      .pipe(
+        z
+          .array(
+            z.enum(Object.keys(EXTENSION_MIME_MAP) as [string, ...string[]]),
+          )
+          .min(1),
+      ),
 
     SMTP_HOST: z.string().min(1).optional(),
     SMTP_PORT: z.coerce.number().int().positive().optional(),

@@ -76,7 +76,9 @@ function makeService(overrides?: {
     getActiveMembership: vi
       .fn()
       .mockResolvedValue(
-        overrides?.membership !== undefined ? overrides.membership : null,
+        overrides?.membership !== undefined
+          ? overrides.membership
+          : { role: 'MEMBER' },
       ),
     hasMemberLevelAccess: vi
       .fn()
@@ -228,6 +230,17 @@ describe('DocumentsService.download', () => {
 });
 
 describe('DocumentsService.delete', () => {
+  it('denies an uploader demoted to VIEWER', async () => {
+    const { service, storage } = makeService({
+      effectiveKeys: new Set(['DOCUMENTS_DELETE']),
+      membership: { role: 'VIEWER' },
+      document: { ...baseDocument, uploadedById: actor.id },
+    });
+    await expect(
+      service.delete('proj-1', 'doc-1', actor),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(storage.deleteIfExists).not.toHaveBeenCalled();
+  });
   it('rejects a non-uploader, non-manager actor without override', async () => {
     const { service } = makeService({
       effectiveKeys: new Set(['DOCUMENTS_DELETE']),

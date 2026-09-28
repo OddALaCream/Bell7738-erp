@@ -121,7 +121,9 @@ function makeService(overrides?: {
     getActiveMembership: vi
       .fn()
       .mockResolvedValue(
-        overrides?.membership !== undefined ? overrides.membership : null,
+        overrides?.membership !== undefined
+          ? overrides.membership
+          : { role: 'MEMBER' },
       ),
     canManageProject: vi.fn().mockResolvedValue(true),
     hasMemberLevelAccess: vi
@@ -230,6 +232,17 @@ describe('TasksService.create', () => {
 });
 
 describe('TasksService.update', () => {
+  it('denies a creator demoted to VIEWER even with TASKS_UPDATE', async () => {
+    const { service, prisma } = makeService({
+      effectiveKeys: new Set(['TASKS_UPDATE']),
+      membership: { role: 'VIEWER' },
+      task: { ...baseTask, createdById: actor.id },
+    });
+    await expect(
+      service.update('proj-1', 'task-1', { title: 'Changed' }, actor),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.task.updateMany).not.toHaveBeenCalled();
+  });
   const dto = { title: 'Renamed' };
 
   it('rejects a non-creator, non-manager actor without override', async () => {
@@ -326,6 +339,16 @@ describe('TasksService.update', () => {
 });
 
 describe('TasksService.complete', () => {
+  it('denies an assignee demoted to VIEWER even with TASKS_COMPLETE', async () => {
+    const { service } = makeService({
+      effectiveKeys: new Set(['TASKS_COMPLETE']),
+      membership: { role: 'VIEWER' },
+      task: { ...baseTask, assignees: [{ userId: actor.id }] },
+    });
+    await expect(
+      service.complete('proj-1', 'task-1', actor),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
   it('rejects an actor who is not an assignee, MANAGER, or override', async () => {
     const { service } = makeService({
       effectiveKeys: new Set(['TASKS_COMPLETE']),

@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { AppConfigService } from '../config/app-config.service.js';
 import { durationToMs, durationToSeconds } from '../common/duration.js';
 import { TokenService } from './token.service.js';
+import { SessionInvalidException } from '../common/exceptions.js';
 import type { Prisma, Session } from '../generated/prisma/client.js';
 
 /** Any Prisma client or interactive-transaction client — lets callers compose these operations into a larger transaction. */
@@ -128,6 +129,7 @@ export class SessionService {
     const { count } = await this.prisma.session.updateMany({
       where: {
         id: sessionId,
+        userId,
         refreshTokenHash: this.tokens.hashRefreshToken(presentedRefreshToken),
         revokedAt: null,
         expiresAt: { gt: now },
@@ -173,14 +175,21 @@ export class SessionService {
       randomUUID(),
     );
     const now = new Date();
-    await db.session.update({
-      where: { id: sessionId },
+    const { count } = await db.session.updateMany({
+      where: {
+        id: sessionId,
+        userId,
+        revokedAt: null,
+        expiresAt: { gt: now },
+        user: { status: 'ACTIVE' },
+      },
       data: {
         refreshTokenHash: this.tokens.hashRefreshToken(newRefreshToken),
         lastActivityAt: now,
         expiresAt: new Date(now.getTime() + this.refreshTtlMs),
       },
     });
+    if (count === 0) throw new SessionInvalidException();
 
     const accessToken = await this.tokens.signAccessToken(userId, sessionId);
     return {

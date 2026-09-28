@@ -270,13 +270,14 @@ export class DocumentsService {
     );
     if (!keys.has('DOCUMENTS_DELETE')) return false;
     if (keys.has('PROJECTS_VIEW_ALL')) return true;
-    if (document.uploadedById === actor.id) return true;
-
     const membership = await this.access.getActiveMembership(
       actor.id,
       projectId,
     );
-    return membership?.role === 'MANAGER';
+    return (
+      membership?.role === 'MANAGER' ||
+      (membership?.role === 'MEMBER' && document.uploadedById === actor.id)
+    );
   }
 
   private async computeChecksum(storageKey: string): Promise<string> {

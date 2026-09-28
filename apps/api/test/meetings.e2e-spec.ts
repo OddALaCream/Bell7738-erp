@@ -493,7 +493,15 @@ describe('Meetings (e2e)', () => {
       const res = await request(app.getHttpServer())
         .patch(`/api/v1/projects/${project.id}/meetings/${meeting.id}/notes`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ notes: { text: 'hello' }, expectedRevision: 1 })
+        .send({
+          notes: {
+            type: 'doc',
+            content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'hello' }] },
+            ],
+          },
+          expectedRevision: 1,
+        })
         .expect(200);
       expect(res.body.data.revision).toBe(2);
       expect(res.body.data.notes).toEqual({ text: 'hello' });
@@ -512,7 +520,7 @@ describe('Meetings (e2e)', () => {
       const res = await request(app.getHttpServer())
         .patch(`/api/v1/projects/${project.id}/meetings/${meeting.id}/notes`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ notes: { text: 'stale' }, expectedRevision: 99 })
+        .send({ notes: { type: 'doc' }, expectedRevision: 99 })
         .expect(409);
       expect(res.body.error.code).toBe('REVISION_CONFLICT');
       expect(res.body.error.currentRevision).toBe(1);

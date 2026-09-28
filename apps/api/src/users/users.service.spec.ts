@@ -51,6 +51,15 @@ function makePrisma(overrides?: {
 }
 
 describe('UsersService.update (admin edit)', () => {
+  it('denies self-suspension through an uppercase spelling of the UUID', async () => {
+    const id = 'aabbccdd-0000-4000-8000-000000000001';
+    const { prisma } = makePrisma({ target: makeUser({ id }) });
+    const service = new UsersService(prisma, audit);
+    await expect(service.suspend(id.toUpperCase(), id)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
   it("rejects a non-owner actor editing the Owner's record", async () => {
     const { prisma } = makePrisma({
       target: makeUser({ id: 'owner-1', isOwner: true }),

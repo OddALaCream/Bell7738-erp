@@ -12,6 +12,7 @@ import { ActivityService } from '../activity/activity.service.js';
 import { paginate, type PaginatedResult } from '../common/pagination.js';
 import { toDateOrUndefined } from '../common/dates.js';
 import { MeetingNotesRevisionConflictException } from './meeting.exceptions.js';
+import { assertValidMeetingNotes } from './meeting-notes.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import type { CreateMeetingDto } from './dto/create-meeting.dto.js';
 import type { UpdateMeetingDto } from './dto/update-meeting.dto.js';
@@ -455,6 +456,7 @@ export class MeetingsService {
     const meeting = await this.getMeetingOrThrow(projectId, meetingId, actor);
     if (!(await this.canEditMeetingNotes(actor, meeting, projectId)))
       throw new ForbiddenException();
+    assertValidMeetingNotes(dto.notes);
 
     const { count } = await this.prisma.meeting.updateMany({
       where: {
@@ -581,13 +583,14 @@ export class MeetingsService {
     );
     if (!keys.has(permissionKey)) return false;
     if (keys.has('PROJECTS_VIEW_ALL')) return true;
-    if (meeting.organizerId === actor.id) return true;
-
     const membership = await this.access.getActiveMembership(
       actor.id,
       projectId,
     );
-    return membership?.role === 'MANAGER';
+    return (
+      membership?.role === 'MANAGER' ||
+      (membership?.role === 'MEMBER' && meeting.organizerId === actor.id)
+    );
   }
 
   private async canEditMeetingNotes(
@@ -602,18 +605,17 @@ export class MeetingsService {
     );
     if (!keys.has('MEETINGS_UPDATE')) return false;
     if (keys.has('PROJECTS_VIEW_ALL')) return true;
-    if (
-      meeting.participants.some(
-        (participant) => participant.userId === actor.id,
-      )
-    )
-      return true;
-
     const membership = await this.access.getActiveMembership(
       actor.id,
       projectId,
     );
-    return membership?.role === 'MANAGER';
+    return (
+      membership?.role === 'MANAGER' ||
+      (membership?.role === 'MEMBER' &&
+        meeting.participants.some(
+          (participant) => participant.userId === actor.id,
+        ))
+    );
   }
 
   private async getViewerCapabilities(

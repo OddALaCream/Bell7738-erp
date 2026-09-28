@@ -220,7 +220,8 @@ export class UsersService {
     context?: AuditContext,
   ) {
     // docs/RBAC.md: "Un no-Owner ... no puede modificar su propio estado".
-    if (userId === actorId) throw new ForbiddenException();
+    if (userId.toLowerCase() === actorId.toLowerCase())
+      throw new ForbiddenException();
 
     return this.prisma.$transaction(async (tx) => {
       // Atomic conditional UPDATE: the isOwner/fromStatuses check and the

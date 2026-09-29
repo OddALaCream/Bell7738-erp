@@ -10,7 +10,8 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   test: {
-    include: ['src/**/*.test.ts'],
+    // Component tests opt into jsdom with // @vitest-environment jsdom; pure-logic tests stay in node.
+    include: ['src/**/*.test.{ts,tsx}'],
     environment: 'node',
   },
 });

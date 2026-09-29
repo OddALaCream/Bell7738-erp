@@ -143,16 +143,15 @@ export function NotesEditSession({
         queryFn: () => api.getMeeting(projectId, meeting.id),
         staleTime: 0,
       });
-      // Keep the draft before replacing it: it stays visible and copyable until explicitly discarded.
-      setStashed((current) => [
-        ...current,
-        {
-          id: (current[current.length - 1]?.id ?? 0) + 1,
-          json: editor.getJSON(),
-          html: editor.getHTML(),
-          text: editor.getText({ blockSeparator: '\n' }),
-        },
-      ]);
+      // Read the draft NOW, before the editor content is replaced: a state updater runs later,
+      // by which time `editor` would already hold the other person's version.
+      const draft = {
+        json: editor.getJSON(),
+        html: editor.getHTML(),
+        text: editor.getText({ blockSeparator: '\n' }),
+      };
+      // Kept visible and copyable until the user explicitly discards it.
+      setStashed((current) => [...current, { id: (current[current.length - 1]?.id ?? 0) + 1, ...draft }]);
       editor.commands.setContent((latest.notes ?? '') as JSONContent, { emitUpdate: false });
       setBaseRevision(latest.revision);
       setConflict(null);

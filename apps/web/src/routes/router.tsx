@@ -1,29 +1,31 @@
+import type { ComponentType } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppShell } from '@/components/layout/app-shell';
 import { RequireAuth, RequireGuest } from './protected-route';
 import { LoginPage } from '@/pages/login-page';
 import { AcceptInvitationPage } from '@/pages/accept-invitation-page';
 import { DashboardPage } from '@/pages/dashboard-page';
-import { SchedulePage } from '@/pages/schedule-page';
 import { TeamPage } from '@/pages/team-page';
 import { ProfilePage } from '@/pages/profile-page';
 import { ProfileSessionsPage } from '@/pages/profile-sessions-page';
 import { UserProfilePage } from '@/pages/user-profile-page';
 import { NotificationsPage } from '@/pages/notifications-page';
 import { NotFoundPage } from '@/pages/not-found-page';
-import { AdminUsersPage } from '@/pages/admin/admin-users-page';
-import { AdminRolesPage } from '@/pages/admin/admin-roles-page';
-import { AdminAuditPage } from '@/pages/admin/admin-audit-page';
+import { RouteErrorPage } from '@/pages/route-error-page';
 import { ProjectsListPage } from '@/pages/projects/projects-list-page';
 import { ProjectLayout } from '@/pages/projects/project-layout';
 import { ProjectOverviewPage } from '@/pages/projects/project-overview-page';
 import { ProjectMembersPage } from '@/pages/projects/project-members-page';
 import { ProjectTasksPage } from '@/pages/projects/project-tasks-page';
-import { ProjectTimelinePage } from '@/pages/projects/project-timeline-page';
-import { ProjectCalendarPage } from '@/pages/projects/project-calendar-page';
-import { ProjectMeetingsPage } from '@/pages/projects/project-meetings-page';
-import { ProjectDocumentsPage } from '@/pages/projects/project-documents-page';
-import { ProjectActivityPage } from '@/pages/projects/project-activity-page';
+
+/**
+ * Screens that pull in the heavy libraries (FullCalendar, Tiptap) or are
+ * rarely opened load on demand, keeping the first download — the one every
+ * phone pays on launch — small. Named exports are adapted for `lazy`.
+ */
+function lazyPage<Module>(load: () => Promise<Module>, name: keyof Module) {
+  return async () => ({ Component: (await load())[name] as ComponentType });
+}
 
 export const router = createBrowserRouter([
   {
@@ -41,34 +43,41 @@ export const router = createBrowserRouter([
         <AppShell />
       </RequireAuth>
     ),
+    errorElement: <RouteErrorPage />,
     children: [
-      { index: true, element: <DashboardPage /> },
-      { path: 'schedule', element: <SchedulePage /> },
-      { path: 'projects', element: <ProjectsListPage /> },
       {
-        path: 'projects/:projectId',
-        element: <ProjectLayout />,
+        // Pathless: a failing screen shows the error inside the shell instead of replacing it.
+        errorElement: <RouteErrorPage />,
         children: [
-          { index: true, element: <Navigate to="overview" replace /> },
-          { path: 'overview', element: <ProjectOverviewPage /> },
-          { path: 'tasks', element: <ProjectTasksPage /> },
-          { path: 'timeline', element: <ProjectTimelinePage /> },
-          { path: 'calendar', element: <ProjectCalendarPage /> },
-          { path: 'meetings', element: <ProjectMeetingsPage /> },
-          { path: 'documents', element: <ProjectDocumentsPage /> },
-          { path: 'members', element: <ProjectMembersPage /> },
-          { path: 'activity', element: <ProjectActivityPage /> },
+          { index: true, element: <DashboardPage /> },
+          { path: 'schedule', lazy: lazyPage(() => import('@/pages/schedule-page'), 'SchedulePage') },
+          { path: 'projects', element: <ProjectsListPage /> },
+          {
+            path: 'projects/:projectId',
+            element: <ProjectLayout />,
+            children: [
+              { index: true, element: <Navigate to="overview" replace /> },
+              { path: 'overview', element: <ProjectOverviewPage /> },
+              { path: 'tasks', element: <ProjectTasksPage /> },
+              { path: 'timeline', lazy: lazyPage(() => import('@/pages/projects/project-timeline-page'), 'ProjectTimelinePage') },
+              { path: 'calendar', lazy: lazyPage(() => import('@/pages/projects/project-calendar-page'), 'ProjectCalendarPage') },
+              { path: 'meetings', lazy: lazyPage(() => import('@/pages/projects/project-meetings-page'), 'ProjectMeetingsPage') },
+              { path: 'documents', lazy: lazyPage(() => import('@/pages/projects/project-documents-page'), 'ProjectDocumentsPage') },
+              { path: 'members', element: <ProjectMembersPage /> },
+              { path: 'activity', lazy: lazyPage(() => import('@/pages/projects/project-activity-page'), 'ProjectActivityPage') },
+            ],
+          },
+          { path: 'team', element: <TeamPage /> },
+          { path: 'profile', element: <ProfilePage /> },
+          { path: 'profile/sessions', element: <ProfileSessionsPage /> },
+          { path: 'users/:userId/profile', element: <UserProfilePage /> },
+          { path: 'notifications', element: <NotificationsPage /> },
+          { path: 'admin/users', lazy: lazyPage(() => import('@/pages/admin/admin-users-page'), 'AdminUsersPage') },
+          { path: 'admin/roles', lazy: lazyPage(() => import('@/pages/admin/admin-roles-page'), 'AdminRolesPage') },
+          { path: 'admin/audit', lazy: lazyPage(() => import('@/pages/admin/admin-audit-page'), 'AdminAuditPage') },
+          { path: '*', element: <NotFoundPage /> },
         ],
       },
-      { path: 'team', element: <TeamPage /> },
-      { path: 'profile', element: <ProfilePage /> },
-      { path: 'profile/sessions', element: <ProfileSessionsPage /> },
-      { path: 'users/:userId/profile', element: <UserProfilePage /> },
-      { path: 'notifications', element: <NotificationsPage /> },
-      { path: 'admin/users', element: <AdminUsersPage /> },
-      { path: 'admin/roles', element: <AdminRolesPage /> },
-      { path: 'admin/audit', element: <AdminAuditPage /> },
-      { path: '*', element: <NotFoundPage /> },
     ],
   },
   { path: '*', element: <NotFoundPage /> },

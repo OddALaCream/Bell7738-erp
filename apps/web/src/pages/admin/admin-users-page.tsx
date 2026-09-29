@@ -54,7 +54,7 @@ export function AdminUsersPage() {
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
 
-  const usersQuery = useUsers({ search: debouncedSearch || undefined, status, pageSize: 50 });
+  const usersQuery = useUsers({ search: debouncedSearch || undefined, status, pageSize: 50 }, { enabled: can('USERS_VIEW') });
   const suspendUser = useSuspendUser();
   const reactivateUser = useReactivateUser();
   const disableUser = useDisableUser();
@@ -102,157 +102,167 @@ export function AdminUsersPage() {
         )}
       </div>
 
-      <Tabs defaultValue="users">
-        <TabsList>
-          <TabsTrigger value="users">
-            <UsersIcon className="size-4" /> Usuarios
-          </TabsTrigger>
-          <TabsTrigger value="invitations">Invitaciones</TabsTrigger>
-        </TabsList>
+      {!can('USERS_VIEW') && (
+        <EmptyState
+          icon={UsersIcon}
+          title="Puedes invitar personas, pero no ver la lista"
+          description="Listar usuarios e invitaciones requiere el permiso de consulta de usuarios."
+        />
+      )}
 
-        <TabsContent value="users" className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Input
-              placeholder="Buscar por nombre o email…"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                updateFilter('search', e.target.value || undefined);
-              }}
-              className="max-w-xs"
-            />
-            <Select value={status ?? 'ALL'} onValueChange={(v) => updateFilter('status', v === 'ALL' ? undefined : v)}>
-              <SelectTrigger className="w-44" aria-label="Estado de la cuenta">
-                <SelectValue placeholder="Estado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todos los estados</SelectItem>
-                <SelectItem value="INVITED">Invitado</SelectItem>
-                <SelectItem value="ACTIVE">Activo</SelectItem>
-                <SelectItem value="SUSPENDED">Suspendido</SelectItem>
-                <SelectItem value="DISABLED">Deshabilitado</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+      {can('USERS_VIEW') && (
+        <Tabs defaultValue="users">
+          <TabsList>
+            <TabsTrigger value="users">
+              <UsersIcon className="size-4" /> Usuarios
+            </TabsTrigger>
+            <TabsTrigger value="invitations">Invitaciones</TabsTrigger>
+          </TabsList>
 
-          <QueryState
-            query={usersQuery}
-            skeleton={<Skeleton className="h-64 w-full" />}
-            emptyWhen={(data) => data.data.length === 0}
-            empty={
-              <EmptyState
-                icon={UsersIcon}
-                title={debouncedSearch || status ? 'Sin resultados' : 'Aún no hay usuarios'}
+          <TabsContent value="users" className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <Input
+                placeholder="Buscar por nombre o email…"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  updateFilter('search', e.target.value || undefined);
+                }}
+                className="max-w-xs"
               />
-            }
-          >
-            {(data) => (
-              <div className="overflow-hidden rounded-lg border border-border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Usuario</TableHead>
-                      <TableHead>Estado</TableHead>
-                      <TableHead className="hidden md:table-cell">Roles</TableHead>
-                      <TableHead className="hidden sm:table-cell">Último acceso</TableHead>
-                      <TableHead className="w-10" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.data.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <UserAvatar firstName={row.firstName} lastName={row.lastName} />
-                            <div className="min-w-0">
-                              <p className="flex items-center gap-1.5 truncate text-sm font-medium">
-                                {fullName(row)}
-                                {row.isOwner && <ShieldCheck className="size-3.5 text-brand-600" aria-label="Owner" />}
-                              </p>
-                              <p className="truncate text-xs text-muted-foreground">{row.email}</p>
-                              {row.roles.length > 0 && (
-                                <div className="mt-1 flex flex-wrap gap-1 md:hidden">
-                                  {row.roles.map((role) => (
-                                    <RoleBadge key={role.id} name={role.name} color={role.color} />
-                                  ))}
-                                </div>
+              <Select value={status ?? 'ALL'} onValueChange={(v) => updateFilter('status', v === 'ALL' ? undefined : v)}>
+                <SelectTrigger className="w-44" aria-label="Estado de la cuenta">
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todos los estados</SelectItem>
+                  <SelectItem value="INVITED">Invitado</SelectItem>
+                  <SelectItem value="ACTIVE">Activo</SelectItem>
+                  <SelectItem value="SUSPENDED">Suspendido</SelectItem>
+                  <SelectItem value="DISABLED">Deshabilitado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <QueryState
+              query={usersQuery}
+              skeleton={<Skeleton className="h-64 w-full" />}
+              emptyWhen={(data) => data.data.length === 0}
+              empty={
+                <EmptyState
+                  icon={UsersIcon}
+                  title={debouncedSearch || status ? 'Sin resultados' : 'Aún no hay usuarios'}
+                />
+              }
+            >
+              {(data) => (
+                <div className="overflow-hidden rounded-lg border border-border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Usuario</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead className="hidden md:table-cell">Roles</TableHead>
+                        <TableHead className="hidden sm:table-cell">Último acceso</TableHead>
+                        <TableHead className="w-10" />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.data.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <UserAvatar firstName={row.firstName} lastName={row.lastName} />
+                              <div className="min-w-0">
+                                <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+                                  {fullName(row)}
+                                  {row.isOwner && <ShieldCheck className="size-3.5 text-brand-600" aria-label="Owner" />}
+                                </p>
+                                <p className="truncate text-xs text-muted-foreground">{row.email}</p>
+                                {row.roles.length > 0 && (
+                                  <div className="mt-1 flex flex-wrap gap-1 md:hidden">
+                                    {row.roles.map((role) => (
+                                      <RoleBadge key={role.id} name={role.name} color={role.color} />
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <UserStatusBadge status={row.status} />
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell">
+                            <div className="flex flex-wrap gap-1">
+                              {row.roles.length === 0 ? (
+                                <span className="text-xs text-muted-foreground">{row.isOwner ? 'Owner' : 'Sin roles'}</span>
+                              ) : (
+                                row.roles.map((role) => <RoleBadge key={role.id} name={role.name} color={role.color} />)
                               )}
                             </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <UserStatusBadge status={row.status} />
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          <div className="flex flex-wrap gap-1">
-                            {row.roles.length === 0 ? (
-                              <span className="text-xs text-muted-foreground">{row.isOwner ? 'Owner' : 'Sin roles'}</span>
-                            ) : (
-                              row.roles.map((role) => <RoleBadge key={role.id} name={role.name} color={role.color} />)
+                          </TableCell>
+                          <TableCell className="hidden text-sm text-muted-foreground sm:table-cell">
+                            {row.lastLoginAt ? new Date(row.lastLoginAt).toLocaleDateString() : '—'}
+                          </TableCell>
+                          <TableCell>
+                            {!row.isOwner && row.id !== actor?.id && canAny(can, 'USERS_UPDATE', 'USERS_ROLES_MANAGE', 'USERS_DISABLE') && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" aria-label="Acciones">
+                                    <MoreHorizontal />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  {can('USERS_UPDATE') && (
+                                    <DropdownMenuItem onSelect={() => setEditing(row)}>Editar datos</DropdownMenuItem>
+                                  )}
+                                  {can('USERS_ROLES_MANAGE') && (
+                                    <DropdownMenuItem onSelect={() => setManagingRoles(row)}>
+                                      Administrar roles
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuSeparator />
+                                  {can('USERS_DISABLE') && row.status === 'ACTIVE' && (
+                                    <DropdownMenuItem onSelect={() => setPendingAction({ kind: 'suspend', user: row })}>
+                                      Suspender
+                                    </DropdownMenuItem>
+                                  )}
+                                  {can('USERS_UPDATE') && row.status === 'SUSPENDED' && (
+                                    <DropdownMenuItem onSelect={() => setPendingAction({ kind: 'reactivate', user: row })}>
+                                      Reactivar
+                                    </DropdownMenuItem>
+                                  )}
+                                  {can('USERS_DISABLE') && (row.status === 'ACTIVE' || row.status === 'SUSPENDED') && (
+                                    <DropdownMenuItem
+                                      variant="destructive"
+                                      onSelect={() => setPendingAction({ kind: 'disable', user: row })}
+                                    >
+                                      Deshabilitar
+                                    </DropdownMenuItem>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="hidden text-sm text-muted-foreground sm:table-cell">
-                          {row.lastLoginAt ? new Date(row.lastLoginAt).toLocaleDateString() : '—'}
-                        </TableCell>
-                        <TableCell>
-                          {!row.isOwner && row.id !== actor?.id && canAny(can, 'USERS_UPDATE', 'USERS_ROLES_MANAGE', 'USERS_DISABLE') && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" aria-label="Acciones">
-                                  <MoreHorizontal />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                {can('USERS_UPDATE') && (
-                                  <DropdownMenuItem onSelect={() => setEditing(row)}>Editar datos</DropdownMenuItem>
-                                )}
-                                {can('USERS_ROLES_MANAGE') && (
-                                  <DropdownMenuItem onSelect={() => setManagingRoles(row)}>
-                                    Administrar roles
-                                  </DropdownMenuItem>
-                                )}
-                                <DropdownMenuSeparator />
-                                {can('USERS_DISABLE') && row.status === 'ACTIVE' && (
-                                  <DropdownMenuItem onSelect={() => setPendingAction({ kind: 'suspend', user: row })}>
-                                    Suspender
-                                  </DropdownMenuItem>
-                                )}
-                                {can('USERS_UPDATE') && row.status === 'SUSPENDED' && (
-                                  <DropdownMenuItem onSelect={() => setPendingAction({ kind: 'reactivate', user: row })}>
-                                    Reactivar
-                                  </DropdownMenuItem>
-                                )}
-                                {can('USERS_DISABLE') && (row.status === 'ACTIVE' || row.status === 'SUSPENDED') && (
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onSelect={() => setPendingAction({ kind: 'disable', user: row })}
-                                  >
-                                    Deshabilitar
-                                  </DropdownMenuItem>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
-                          {row.isOwner && (
-                            <span className="text-xs text-muted-foreground" title="El Owner no puede administrarse desde aquí">
-                              Owner
-                            </span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </QueryState>
-        </TabsContent>
+                            {row.isOwner && (
+                              <span className="text-xs text-muted-foreground" title="El Owner no puede administrarse desde aquí">
+                                Owner
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </QueryState>
+          </TabsContent>
 
-        <TabsContent value="invitations">
-          <InvitationsPanel />
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="invitations">
+            <InvitationsPanel />
+          </TabsContent>
+        </Tabs>
+      )}
 
       <EditUserDialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)} user={editing} />
 

@@ -9,8 +9,8 @@ export const userKeys = {
   team: (params: api.ListTeamParams) => ['team', params] as const,
 };
 
-export function useUsers(params: api.ListUsersParams) {
-  return useQuery({ queryKey: userKeys.list(params), queryFn: () => api.listUsers(params) });
+export function useUsers(params: api.ListUsersParams, options: { enabled?: boolean } = {}) {
+  return useQuery({ queryKey: userKeys.list(params), queryFn: () => api.listUsers(params), enabled: options.enabled ?? true });
 }
 
 export function useUser(userId: string | undefined) {

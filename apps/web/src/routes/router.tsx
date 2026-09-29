@@ -83,7 +83,7 @@ export const router = createBrowserRouter([
           { path: 'notifications', element: <NotificationsPage /> },
           {
             element: (
-              <RequirePermission anyOf={['USERS_VIEW']}>
+              <RequirePermission anyOf={['USERS_VIEW', 'USERS_CREATE']}>
                 <Outlet />
               </RequirePermission>
             ),

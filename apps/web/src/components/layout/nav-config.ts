@@ -34,7 +34,7 @@ export const mainNavItems: NavItem[] = [
  * the Owner, whose catalog holds every key.
  */
 export const adminNavItems: NavItem[] = [
-  { to: '/admin/users', label: 'Usuarios', icon: Users, anyOf: ['USERS_VIEW'] },
+  { to: '/admin/users', label: 'Usuarios', icon: Users, anyOf: ['USERS_VIEW', 'USERS_CREATE'] },
   { to: '/admin/roles', label: 'Roles', icon: ShieldCheck, anyOf: ['ROLES_VIEW', 'ROLES_MANAGE'] },
   { to: '/admin/audit', label: 'Auditoría', icon: ScrollText, anyOf: ['AUDIT_VIEW'] },
 ];

@@ -39,6 +39,10 @@ describe('admin navigation', () => {
     expect(visibleAdminItems(makeCan(['ROLES_VIEW'])).map((item) => item.to)).toEqual(['/admin/roles']);
   });
 
+  it('lets someone who can only invite reach the users screen', () => {
+    expect(visibleAdminItems(makeCan(['USERS_CREATE'])).map((item) => item.to)).toEqual(['/admin/users']);
+  });
+
   it('shows nothing to someone without administrative permissions', () => {
     expect(visibleAdminItems(makeCan(['TASKS_CREATE', 'PROJECTS_VIEW_ASSIGNED']))).toEqual([]);
   });

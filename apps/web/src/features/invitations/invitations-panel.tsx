@@ -15,9 +15,11 @@ import { toast } from 'sonner';
 import { useInvitations, useResendInvitation, useRevokeInvitation } from './hooks';
 import { InvitationStatusBadge } from './status-badge';
 import { fullName } from '@/lib/utils';
+import { useAuth } from '@/features/auth/auth-context';
 import type { Invitation } from '@/types/domain';
 
 export function InvitationsPanel() {
+  const { can } = useAuth();
   const invitationsQuery = useInvitations({ pageSize: 50 });
   const resend = useResendInvitation();
   const revoke = useRevokeInvitation();
@@ -74,7 +76,7 @@ export function InvitationsPanel() {
                       {new Date(invitation.expiresAt).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
-                      {invitation.status === 'pending' && (
+                      {invitation.status === 'pending' && can('USERS_CREATE') && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" aria-label="Acciones">

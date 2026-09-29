@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, CalendarClock, CheckCircle2, FolderKanban, History, ListTodo, Users } from 'lucide-react';
 import { useSetBreadcrumb } from '@/components/layout/breadcrumb-context';
@@ -50,8 +49,7 @@ export function DashboardPage() {
   const projectsQuery = useDashboardProjects();
   const teamQuery = useDashboardTeam();
 
-  const activityProjectIds = useMemo(() => (projectsQuery.data?.data ?? []).map((project) => project.id), [projectsQuery.data]);
-  const activityQuery = useDashboardActivity(activityProjectIds);
+  const activityQuery = useDashboardActivity();
   const { people, nameOf, ready: peopleReady } = usePeople();
 
   const today = todayDateOnly();
@@ -176,7 +174,7 @@ export function DashboardPage() {
 
         <DashboardSection title="Actividad reciente" icon={History} href="/projects?view=active" hrefLabel="Ver proyectos">
           <QueryState
-            query={{ ...activityQuery, isPending: projectsQuery.isPending || activityQuery.isPending || !peopleReady }}
+            query={{ ...activityQuery, isPending: activityQuery.isPending || !peopleReady }}
             skeleton={<BlockSkeleton rows={4} />}
             emptyWhen={(events) => events.length === 0}
             empty={<EmptyState icon={History} title="Sin actividad reciente" className="border-none py-6" />}

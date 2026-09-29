@@ -7,14 +7,19 @@ function readEnv(key: string, fallback?: string): string {
   return value;
 }
 
-// Defaults mirror the backend's (apps/api/.env.example). The API doesn't expose
-// its upload limits, so these only drive early feedback in the UI — the server
-// stays the authority and its 413/415 answers are always surfaced.
+// Fallbacks only: the real limits come from `GET /auth/me` (`capabilities.uploads`),
+// so an operator changing MAX_UPLOAD_BYTES never needs to rebuild the web app. The
+// server stays the authority and its 413/415 answers are always surfaced.
 const DEFAULT_MAX_UPLOAD_BYTES = '26214400';
 const DEFAULT_DOCUMENT_EXTENSIONS = 'pdf,doc,docx,xls,xlsx,ppt,pptx,png,jpg,jpeg,gif,webp,txt,csv,zip';
 
+// A production build is served by the same Caddy that proxies `/api`, so the
+// API lives on the page's own origin (the CSP allows only `connect-src 'self'`).
+// Only `vite dev` needs an absolute URL for the API on another port.
+const DEFAULT_API_BASE_URL = import.meta.env.PROD ? '/api/v1' : 'http://localhost:3000/api/v1';
+
 export const env = {
-  apiBaseUrl: readEnv('VITE_API_BASE_URL', 'http://localhost:3000/api/v1'),
+  apiBaseUrl: readEnv('VITE_API_BASE_URL', DEFAULT_API_BASE_URL),
   maxUploadBytes: Number(readEnv('VITE_MAX_UPLOAD_BYTES', DEFAULT_MAX_UPLOAD_BYTES)),
   documentExtensions: readEnv('VITE_DOCUMENT_ALLOWED_EXTENSIONS', DEFAULT_DOCUMENT_EXTENSIONS)
     .split(',')

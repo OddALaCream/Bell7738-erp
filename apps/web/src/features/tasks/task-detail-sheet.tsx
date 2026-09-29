@@ -13,7 +13,7 @@ import { formatDateOnly } from '@/lib/dates';
 import { toast } from 'sonner';
 import { ApiError } from '@/lib/api-types';
 import { useCompleteTask, useDeleteTask, useReopenTask, useTask } from './hooks';
-import { canCompleteTask, canEditTask, canReopenOrDeleteTask } from './permissions';
+import { canCompleteTask, canDeleteTask, canEditTask, canReopenTask } from './permissions';
 import { TaskStatusBadge } from './status-badge';
 import { TaskFormDialog } from './task-form-dialog';
 import type { ProjectMember, ProjectRole } from '@/types/domain';
@@ -29,7 +29,7 @@ export function TaskDetailSheet({
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const taskId = searchParams.get('taskId') ?? undefined;
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -45,7 +45,6 @@ export function TaskDetailSheet({
   }
 
   const task = taskQuery.data;
-  const isOwner = user?.isOwner ?? false;
 
   return (
     <>
@@ -89,7 +88,7 @@ export function TaskDetailSheet({
               </div>
 
               <SheetFooter>
-                {task.status !== 'DONE' && canCompleteTask(task, user.id, isOwner, projectRole) && (
+                {task.status !== 'DONE' && canCompleteTask(task, user.id, can, projectRole) && (
                   <Button
                     onClick={async () => {
                       try {
@@ -102,7 +101,7 @@ export function TaskDetailSheet({
                     <CheckCircle2 /> Completar
                   </Button>
                 )}
-                {task.status === 'DONE' && canReopenOrDeleteTask(isOwner, projectRole) && (
+                {task.status === 'DONE' && canReopenTask(can, projectRole) && (
                   <Button
                     variant="outline"
                     onClick={async () => {
@@ -116,12 +115,12 @@ export function TaskDetailSheet({
                     <RotateCcw /> Reabrir
                   </Button>
                 )}
-                {task.status !== 'DONE' && canEditTask(task, user.id, isOwner, projectRole) && (
+                {task.status !== 'DONE' && canEditTask(task, user.id, can, projectRole) && (
                   <Button variant="outline" onClick={() => setEditing(true)}>
                     <Pencil /> Editar
                   </Button>
                 )}
-                {canReopenOrDeleteTask(isOwner, projectRole) && (
+                {canDeleteTask(can, projectRole) && (
                   <Button variant="outline" onClick={() => setDeleting(true)}>
                     <Trash2 className="text-destructive" /> Eliminar
                   </Button>

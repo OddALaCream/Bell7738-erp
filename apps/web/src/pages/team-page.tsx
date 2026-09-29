@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/common/empty-state';
 import { Input } from '@/components/ui/input';
 import { UserAvatar } from '@/components/ui/avatar';
 import { Card, CardContent } from '@/components/ui/card';
+import { RoleBadge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { fullName } from '@/lib/utils';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
@@ -67,8 +68,15 @@ export function TeamPage() {
                 <Card className="transition-colors hover:bg-accent">
                   <CardContent className="flex items-center gap-3 py-4">
                     <UserAvatar firstName={member.firstName} lastName={member.lastName} className="size-10" />
-                    <div className="min-w-0">
+                    <div className="min-w-0 space-y-1">
                       <p className="truncate text-sm font-medium">{fullName(member)}</p>
+                      {member.roles.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {member.roles.map((role) => (
+                            <RoleBadge key={role.id} name={role.name} color={role.color} />
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

@@ -8,7 +8,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useAuth } from '@/features/auth/auth-context';
-import { adminNavItems, mainNavItems, type NavItem } from './nav-config';
+import { mainNavItems, visibleAdminItems, type NavItem } from './nav-config';
 import { useSidebar } from './sidebar-context';
 
 export function SidebarTrigger({ className, ...props }: ButtonProps) {
@@ -52,7 +52,8 @@ function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
 
 export function Sidebar() {
   const { collapsed } = useSidebar();
-  const { user } = useAuth();
+  const { can } = useAuth();
+  const adminItems = visibleAdminItems(can);
 
   return (
     <aside
@@ -68,12 +69,12 @@ export function Sidebar() {
         {mainNavItems.map((item) => (
           <SidebarLink key={item.to} item={item} collapsed={collapsed} />
         ))}
-        {user?.isOwner && (
+        {adminItems.length > 0 && (
           <>
             <div className={cn('mt-4 mb-1 px-3 text-xs font-semibold uppercase text-muted-foreground', collapsed && 'sr-only')}>
               Administración
             </div>
-            {adminNavItems.map((item) => (
+            {adminItems.map((item) => (
               <SidebarLink key={item.to} item={item} collapsed={collapsed} />
             ))}
           </>

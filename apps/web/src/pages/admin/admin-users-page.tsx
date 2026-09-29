@@ -26,6 +26,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { fullName } from '@/lib/utils';
+import { RoleBadge } from '@/components/ui/badge';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useUsers, useSuspendUser, useReactivateUser, useDisableUser } from '@/features/users/hooks';
 import { UserStatusBadge } from '@/features/users/status-badge';
@@ -36,12 +37,13 @@ import { CreateInvitationDialog } from '@/features/invitations/create-invitation
 import { InvitationsPanel } from '@/features/invitations/invitations-panel';
 import type { AdminUser, UserStatus } from '@/types/domain';
 import { useAuth } from '@/features/auth/auth-context';
+import { canAny } from '@/lib/permissions';
 
 type PendingAction = { kind: 'suspend' | 'reactivate' | 'disable'; user: AdminUser } | null;
 
 export function AdminUsersPage() {
   useSetBreadcrumb('Administración / Usuarios');
-  const { user: actor } = useAuth();
+  const { user: actor, can } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -93,9 +95,11 @@ export function AdminUsersPage() {
           <h1 className="text-lg font-semibold">Usuarios</h1>
           <p className="text-sm text-muted-foreground">Administra cuentas, estados e invitaciones.</p>
         </div>
-        <Button onClick={() => setInviteOpen(true)}>
-          <UserPlus /> Invitar usuario
-        </Button>
+        {can('USERS_CREATE') && (
+          <Button onClick={() => setInviteOpen(true)}>
+            <UserPlus /> Invitar usuario
+          </Button>
+        )}
       </div>
 
       <Tabs defaultValue="users">
@@ -149,6 +153,7 @@ export function AdminUsersPage() {
                     <TableRow>
                       <TableHead>Usuario</TableHead>
                       <TableHead>Estado</TableHead>
+                      <TableHead className="hidden md:table-cell">Roles</TableHead>
                       <TableHead className="hidden sm:table-cell">Último acceso</TableHead>
                       <TableHead className="w-10" />
                     </TableRow>
@@ -171,11 +176,20 @@ export function AdminUsersPage() {
                         <TableCell>
                           <UserStatusBadge status={row.status} />
                         </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <div className="flex flex-wrap gap-1">
+                            {row.roles.length === 0 ? (
+                              <span className="text-xs text-muted-foreground">{row.isOwner ? 'Owner' : 'Sin roles'}</span>
+                            ) : (
+                              row.roles.map((role) => <RoleBadge key={role.id} name={role.name} color={role.color} />)
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell className="hidden text-sm text-muted-foreground sm:table-cell">
                           {row.lastLoginAt ? new Date(row.lastLoginAt).toLocaleDateString() : '—'}
                         </TableCell>
                         <TableCell>
-                          {!row.isOwner && row.id !== actor?.id && (
+                          {!row.isOwner && row.id !== actor?.id && canAny(can, 'USERS_UPDATE', 'USERS_ROLES_MANAGE', 'USERS_DISABLE') && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" aria-label="Acciones">
@@ -183,22 +197,26 @@ export function AdminUsersPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onSelect={() => setEditing(row)}>Editar datos</DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => setManagingRoles(row)}>
-                                  Administrar roles
-                                </DropdownMenuItem>
+                                {can('USERS_UPDATE') && (
+                                  <DropdownMenuItem onSelect={() => setEditing(row)}>Editar datos</DropdownMenuItem>
+                                )}
+                                {can('USERS_ROLES_MANAGE') && (
+                                  <DropdownMenuItem onSelect={() => setManagingRoles(row)}>
+                                    Administrar roles
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuSeparator />
-                                {row.status === 'ACTIVE' && (
+                                {can('USERS_DISABLE') && row.status === 'ACTIVE' && (
                                   <DropdownMenuItem onSelect={() => setPendingAction({ kind: 'suspend', user: row })}>
                                     Suspender
                                   </DropdownMenuItem>
                                 )}
-                                {row.status === 'SUSPENDED' && (
+                                {can('USERS_UPDATE') && row.status === 'SUSPENDED' && (
                                   <DropdownMenuItem onSelect={() => setPendingAction({ kind: 'reactivate', user: row })}>
                                     Reactivar
                                   </DropdownMenuItem>
                                 )}
-                                {(row.status === 'ACTIVE' || row.status === 'SUSPENDED') && (
+                                {can('USERS_DISABLE') && (row.status === 'ACTIVE' || row.status === 'SUSPENDED') && (
                                   <DropdownMenuItem
                                     variant="destructive"
                                     onSelect={() => setPendingAction({ kind: 'disable', user: row })}

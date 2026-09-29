@@ -24,7 +24,7 @@ import { useCompleteTask, useTasks } from '@/features/tasks/hooks';
 import { TaskStatusBadge } from '@/features/tasks/status-badge';
 import { TaskFormDialog } from '@/features/tasks/task-form-dialog';
 import { TaskDetailSheet } from '@/features/tasks/task-detail-sheet';
-import { canCompleteTask } from '@/features/tasks/permissions';
+import { canCompleteTask, canCreateTask } from '@/features/tasks/permissions';
 import { useAuth } from '@/features/auth/auth-context';
 import { TASK_STATUS_LABEL } from '@/features/schedule/task-state';
 import type { ProjectDetail, TaskStatus } from '@/types/domain';
@@ -33,7 +33,7 @@ const PAGE_SIZE = 50;
 
 export function ProjectTasksPage() {
   const project = useOutletContext<ProjectDetail>();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -135,9 +135,11 @@ export function ProjectTasksPage() {
             />
           </div>
         </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
-          <Plus /> Crear tarea
-        </Button>
+        {canCreateTask(can, project.viewerCapabilities.role) && (
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus /> Crear tarea
+          </Button>
+        )}
       </div>
 
       <QueryState
@@ -163,7 +165,7 @@ export function ProjectTasksPage() {
                     <button
                       type="button"
                       aria-label={done ? 'Terminada' : 'Marcar como completada'}
-                      disabled={done || !user || !canCompleteTask(task, user.id, user.isOwner, project.viewerCapabilities.role)}
+                      disabled={done || !user || !canCompleteTask(task, user.id, can, project.viewerCapabilities.role)}
                       onClick={async (e) => {
                         e.stopPropagation();
                         try {

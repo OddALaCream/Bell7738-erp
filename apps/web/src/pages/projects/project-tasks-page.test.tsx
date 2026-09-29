@@ -12,7 +12,10 @@ vi.mock('@/features/tasks/hooks', () => ({
 }));
 vi.mock('@/features/projects/hooks', () => ({ useProjectMembers: () => ({ data: [] }) }));
 vi.mock('@/features/auth/auth-context', () => ({
-  useAuth: () => ({ user: { id: 'u1', firstName: 'Ana', lastName: 'Ruiz', isOwner: false } }),
+  useAuth: () => ({
+    user: { id: 'u1', firstName: 'Ana', lastName: 'Ruiz', isOwner: false },
+    can: (...keys: string[]) => keys.every((key) => ['TASKS_CREATE', 'TASKS_COMPLETE'].includes(key)),
+  }),
 }));
 vi.mock('@/features/tasks/task-form-dialog', () => ({ TaskFormDialog: () => null }));
 vi.mock('@/features/tasks/task-detail-sheet', () => ({ TaskDetailSheet: () => null }));

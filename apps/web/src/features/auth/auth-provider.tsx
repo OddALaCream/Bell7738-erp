@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, registerSessionExpiredHandler, setAccessToken } from '@/lib/api-client';
-import type { UserSummary } from '@/types/domain';
+import { makeCan } from '@/lib/permissions';
+import type { CurrentUser } from '@/types/domain';
 import { AuthContext, type AuthContextValue } from './auth-context';
 import * as authApi from './api';
+
+const PERMISSION_SYNC_MS = 60_000;
 
 /**
  * Bootstraps a session on load by attempting a single coordinated refresh
@@ -11,7 +14,7 @@ import * as authApi from './api';
  * data while that's in flight, and go straight to anonymous if it fails.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<UserSummary | null>(null);
+  const [user, setUser] = useState<CurrentUser | null>(null);
   const [status, setStatus] = useState<AuthContextValue['status']>('restoring');
   const queryClient = useQueryClient();
   const bootstrapped = useRef(false);
@@ -69,8 +72,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(me);
   }, []);
 
+  // Roles can change while the app stays open; re-read the effective permissions
+  // when the person comes back to the tab (at most once a minute). A failure is
+  // ignored here: the API client already handles an expired session.
+  const lastSync = useRef(0);
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    lastSync.current = Date.now();
+    function onVisible() {
+      if (document.visibilityState !== 'visible' || Date.now() - lastSync.current < PERMISSION_SYNC_MS) return;
+      lastSync.current = Date.now();
+      void refreshUser().catch(() => undefined);
+    }
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [status, refreshUser]);
+
+  const can = useMemo(() => makeCan(user?.permissions), [user]);
+
   return (
-    <AuthContext.Provider value={{ user, status, login, logout, logoutAll, refreshUser }}>
+    <AuthContext.Provider value={{ user, status, login, logout, logoutAll, refreshUser, can }}>
       {children}
     </AuthContext.Provider>
   );

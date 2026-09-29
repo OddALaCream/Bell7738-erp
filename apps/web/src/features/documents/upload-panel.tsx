@@ -2,10 +2,10 @@ import { useRef, useState, type DragEvent } from 'react';
 import { AlertTriangle, CheckCircle2, RotateCw, UploadCloud, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { env } from '@/lib/env';
 import { formatBytes } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { UploadItem } from './use-document-uploads';
+import { useUploadRules } from './use-upload-rules';
 
 const LIMITS_ID = 'upload-limits';
 
@@ -27,6 +27,7 @@ export function UploadPanel({
   onDismiss: (id: string) => void;
   onDismissMany: (ids: string[]) => void;
 }) {
+  const rules = useUploadRules();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -64,7 +65,7 @@ export function UploadPanel({
           multiple
           hidden
           tabIndex={-1}
-          accept={env.documentExtensions.map((extension) => `.${extension}`).join(',')}
+          accept={rules.extensions.map((extension) => `.${extension}`).join(',')}
           onChange={(event) => {
             const selected = Array.from(event.target.files ?? []);
             // Reset so choosing the same file again still fires `change`.
@@ -73,8 +74,8 @@ export function UploadPanel({
           }}
         />
         <p id={LIMITS_ID} className="text-xs text-muted-foreground">
-          Máximo {formatBytes(env.maxUploadBytes)} por archivo. Tipos permitidos:{' '}
-          {env.documentExtensions.map((extension) => extension.toUpperCase()).join(', ')}.
+          Máximo {formatBytes(rules.maxBytes)} por archivo. Tipos permitidos:{' '}
+          {rules.extensions.map((extension) => extension.toUpperCase()).join(', ')}.
         </p>
       </div>
 

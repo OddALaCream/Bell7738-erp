@@ -17,6 +17,8 @@ import {
 } from '@/components/ui/select';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { formatDateOnly } from '@/lib/dates';
+import { canAny } from '@/lib/permissions';
+import { useAuth } from '@/features/auth/auth-context';
 import { useProjects } from '@/features/projects/hooks';
 import { ProjectStatusBadge } from '@/features/projects/status-badge';
 import { ProjectFormDialog } from '@/features/projects/project-form-dialog';
@@ -32,6 +34,7 @@ const VIEWS: Array<{ value: NonNullable<ListProjectsParams['view']> | 'all'; lab
 ];
 
 export function ProjectsListPage() {
+  const { can } = useAuth();
   useSetBreadcrumb('Proyectos');
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('search') ?? '');
@@ -56,9 +59,11 @@ export function ProjectsListPage() {
           <h1 className="text-lg font-semibold">Proyectos</h1>
           <p className="text-sm text-muted-foreground">Organiza el trabajo por proyecto.</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus /> Crear proyecto
-        </Button>
+        {can('PROJECTS_CREATE') && canAny(can, 'PROJECTS_VIEW_ASSIGNED', 'PROJECTS_VIEW_ALL') && (
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus /> Crear proyecto
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">

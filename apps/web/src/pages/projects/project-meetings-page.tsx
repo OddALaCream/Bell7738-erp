@@ -11,6 +11,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { UserAvatar } from '@/components/ui/avatar';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { cn, fullName } from '@/lib/utils';
+import { canWriteInProject } from '@/lib/permissions';
+import { useAuth } from '@/features/auth/auth-context';
 import { useProjectMembers } from '@/features/projects/hooks';
 import { useMeetings } from '@/features/meetings/hooks';
 import { formatMeetingWhen, meetingPhase, MEETING_PHASE_LABEL } from '@/features/meetings/format';
@@ -35,6 +37,7 @@ function parseView(value: string | null): MeetingView {
 export function ProjectMeetingsPage() {
   const project = useOutletContext<ProjectDetail>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { can } = useAuth();
   const [createOpen, setCreateOpen] = useState(false);
   const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -72,8 +75,7 @@ export function ProjectMeetingsPage() {
   }
 
   const filtered = !!debouncedSearch || view !== 'upcoming';
-  // A VIEWER can never create; a null role is an org-wide override the API decides on.
-  const canCreate = project.viewerCapabilities.role !== 'VIEWER';
+  const canCreate = canWriteInProject(can, 'MEETINGS_CREATE', project.viewerCapabilities.role);
 
   return (
     <div className="space-y-4">

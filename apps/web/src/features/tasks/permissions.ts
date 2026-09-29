@@ -1,33 +1,44 @@
+import { canManageInProject, canWriteInProject, type Can } from '@/lib/permissions';
 import type { ProjectRole, Task } from '@/types/domain';
 
 /**
- * Client-side approximation of docs/RBAC.md's task rules, used only to
- * decide which buttons to show. The backend re-checks every action for
- * real; this can under-grant for an org-wide override admin (someone with
- * PROJECTS_VIEW_ALL + TASKS_* but no MANAGER membership here and not
- * Owner), because the frontend has no way to know someone's global
- * permission keys — see docs/FRONTEND_BACKEND_GAPS.md's /auth/me gap.
+ * docs/RBAC.md's task rules as UX hints, driven by the permissions the backend
+ * reports for this person (`GET /auth/me`) and their role in the project. They
+ * only decide which buttons to show; the API re-checks every action for real,
+ * including the creator/assignee relation.
  */
+export function canCreateTask(can: Can, projectRole: ProjectRole | null): boolean {
+  return canWriteInProject(can, 'TASKS_CREATE', projectRole);
+}
+
 export function canEditTask(
   task: Pick<Task, 'createdById'>,
   currentUserId: string,
-  isOwner: boolean,
+  can: Can,
   projectRole: ProjectRole | null,
 ): boolean {
-  if (isOwner || projectRole === 'MANAGER') return true;
-  return task.createdById === currentUserId;
+  if (canManageInProject(can, 'TASKS_UPDATE', projectRole)) return true;
+  return can('TASKS_UPDATE') && projectRole === 'MEMBER' && task.createdById === currentUserId;
 }
 
 export function canCompleteTask(
   task: Pick<Task, 'assignees'>,
   currentUserId: string,
-  isOwner: boolean,
+  can: Can,
   projectRole: ProjectRole | null,
 ): boolean {
-  if (isOwner || projectRole === 'MANAGER') return true;
-  return task.assignees.some((assignee) => assignee.userId === currentUserId);
+  if (canManageInProject(can, 'TASKS_COMPLETE', projectRole)) return true;
+  return (
+    can('TASKS_COMPLETE') &&
+    projectRole === 'MEMBER' &&
+    task.assignees.some((assignee) => assignee.userId === currentUserId)
+  );
 }
 
-export function canReopenOrDeleteTask(isOwner: boolean, projectRole: ProjectRole | null): boolean {
-  return isOwner || projectRole === 'MANAGER';
+export function canReopenTask(can: Can, projectRole: ProjectRole | null): boolean {
+  return canManageInProject(can, 'TASKS_UPDATE', projectRole);
+}
+
+export function canDeleteTask(can: Can, projectRole: ProjectRole | null): boolean {
+  return canManageInProject(can, 'TASKS_DELETE', projectRole);
 }

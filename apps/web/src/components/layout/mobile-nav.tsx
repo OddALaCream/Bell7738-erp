@@ -4,13 +4,14 @@ import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
 import { useAuth } from '@/features/auth/auth-context';
-import { adminNavItems, mainNavItems } from './nav-config';
+import { mainNavItems, visibleAdminItems } from './nav-config';
 
 const bottomItems = mainNavItems.filter((item) => item.primary);
 
 export function MobileNav() {
   const [moreOpen, setMoreOpen] = useState(false);
-  const { user } = useAuth();
+  const { can } = useAuth();
+  const adminItems = visibleAdminItems(can);
 
   return (
     <>
@@ -50,8 +51,7 @@ export function MobileNav() {
             <SheetTitle>Más opciones</SheetTitle>
           </SheetHeader>
           <nav className="mt-2 flex flex-col gap-1">
-            {user?.isOwner &&
-              adminNavItems.map((item) => (
+            {adminItems.map((item) => (
                 <SheetClose asChild key={item.to}>
                   <NavLink
                     to={item.to}

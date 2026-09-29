@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ActivityEvent, CalendarItem } from '@/types/domain';
-import { mergeRecentActivity, nextMeetings, prioritizeTasks } from './logic';
+import type { CalendarItem } from '@/types/domain';
+import { nextMeetings, prioritizeTasks } from './logic';
 
 type TaskItem = Extract<CalendarItem, { kind: 'task' }>;
 
@@ -74,29 +74,5 @@ describe('nextMeetings', () => {
       1,
     );
     expect(result.map((m) => m.id)).toEqual(['a']);
-  });
-});
-
-describe('mergeRecentActivity', () => {
-  const event = (id: string, createdAt: string): ActivityEvent => ({
-    id,
-    projectId: 'p',
-    actorId: null,
-    type: 'TASK_COMPLETED',
-    entityType: 'Task',
-    entityId: null,
-    metadata: null,
-    createdAt,
-  });
-
-  it('merges pages newest first and caps the result', () => {
-    const merged = mergeRecentActivity(
-      [
-        [event('a1', '2026-09-28T10:00:00Z'), event('a2', '2026-09-26T10:00:00Z')],
-        [event('b1', '2026-09-27T10:00:00Z')],
-      ],
-      2,
-    );
-    expect(merged.map((e) => e.id)).toEqual(['a1', 'b1']);
   });
 });

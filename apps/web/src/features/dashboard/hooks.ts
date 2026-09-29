@@ -1,18 +1,18 @@
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { addDays, todayDateOnly } from '@/lib/dates';
-import { listProjectActivity } from '@/features/activity/api';
+import { listActivityFeed } from '@/features/activity/api';
 import { useProjects } from '@/features/projects/hooks';
 import { getMySchedule } from '@/features/schedule/api';
 import { useMySchedule } from '@/features/schedule/hooks';
 import { useTeam } from '@/features/users/hooks';
-import type { ActivityEvent, CalendarItem } from '@/types/domain';
-import { mergeRecentActivity } from './logic';
+import type { CalendarItem } from '@/types/domain';
 
 /**
- * The API has no `GET /dashboard` (docs/FRONTEND_BACKEND_GAPS.md), so each
- * block is composed from existing endpoints. Every block is its own query so
- * a failure only replaces that block (docs/UI-UX.md: "un fallo parcial muestra
- * error sólo en el bloque afectado").
+ * Each block is composed from an existing endpoint, as its own query, so a
+ * failure only replaces that block (docs/UI-UX.md: "un fallo parcial muestra
+ * error sólo en el bloque afectado"). There is deliberately no `GET /dashboard`:
+ * five bounded reads on indexed, scope-filtered endpoints don't justify a
+ * second read model to keep in sync.
  */
 export interface BlockQuery<T> {
   isPending: boolean;
@@ -23,8 +23,7 @@ export interface BlockQuery<T> {
 }
 
 const UPCOMING_MEETINGS_WINDOW_DAYS = 30;
-const ACTIVITY_PROJECTS = 4;
-const ACTIVITY_PER_PROJECT = 5;
+const ACTIVITY_LIMIT = 8;
 export const DASHBOARD_PROJECT_LIMIT = 5;
 
 const OPEN_STATUSES = ['PENDING', 'IN_PROGRESS'] as const;
@@ -56,29 +55,11 @@ export function useDashboardProjects() {
   return useProjects({ view: 'active', pageSize: DASHBOARD_PROJECT_LIMIT, sort: 'expectedEndDate', order: 'asc' });
 }
 
-/**
- * There is no cross-project activity feed, so read the latest few events of
- * a handful of active projects and merge them. Projects that fail (e.g. lost
- * access meanwhile) are skipped; the block errors only if none could be read.
- */
-export function useDashboardActivity(projectIds: string[]): BlockQuery<ActivityEvent[]> {
-  const ids = projectIds.slice(0, ACTIVITY_PROJECTS);
-  return useQueries({
-    queries: ids.map((projectId) => ({
-      queryKey: ['projects', projectId, 'activity', { pageSize: ACTIVITY_PER_PROJECT, scope: 'dashboard' }],
-      queryFn: async () => (await listProjectActivity(projectId, { pageSize: ACTIVITY_PER_PROJECT })).data,
-    })),
-    combine: (results) => {
-      const settled = results.every((result) => !result.isPending);
-      const succeeded = results.filter((result) => result.data);
-      return {
-        isPending: !settled,
-        isError: settled && results.length > 0 && succeeded.length === 0,
-        error: results.find((result) => result.isError)?.error ?? null,
-        data: settled ? mergeRecentActivity(succeeded.map((result) => result.data ?? []), 8) : undefined,
-        refetch: () => results.forEach((result) => result.refetch()),
-      };
-    },
+/** The latest events across the projects the person can see: one request, scope applied by the API. */
+export function useDashboardActivity() {
+  return useQuery({
+    queryKey: ['activity', 'feed', { pageSize: ACTIVITY_LIMIT, scope: 'dashboard' }],
+    queryFn: async () => (await listActivityFeed({ pageSize: ACTIVITY_LIMIT })).data,
   });
 }
 

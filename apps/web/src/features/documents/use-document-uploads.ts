@@ -1,10 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { env } from '@/lib/env';
 import * as api from './api';
 import { documentKeys } from './hooks';
 import { describeUploadFailure } from './upload-errors';
 import { validateUploadFile } from './upload-rules';
+import { useUploadRules } from './use-upload-rules';
 
 export interface UploadItem {
   id: string;
@@ -17,8 +17,6 @@ export interface UploadItem {
   retryable: boolean;
 }
 
-const RULES = { maxBytes: env.maxUploadBytes, extensions: env.documentExtensions };
-
 /**
  * Per-file upload state (docs/UI-UX.md): each file succeeds or fails on its
  * own, "done" is only set after the API confirms, and a rejected file never
@@ -27,6 +25,7 @@ const RULES = { maxBytes: env.maxUploadBytes, extensions: env.documentExtensions
  */
 export function useDocumentUploads(projectId: string) {
   const queryClient = useQueryClient();
+  const rules = useUploadRules();
   const [items, setItems] = useState<UploadItem[]>([]);
   const files = useRef(new Map<string, File>());
   const counter = useRef(0);
@@ -59,7 +58,7 @@ export function useDocumentUploads(projectId: string) {
       const created: UploadItem[] = selected.map((file) => {
         counter.current += 1;
         const id = `upload-${counter.current}`;
-        const problem = validateUploadFile(file, RULES);
+        const problem = validateUploadFile(file, rules);
         if (!problem) files.current.set(id, file);
         return {
           id,
@@ -76,7 +75,7 @@ export function useDocumentUploads(projectId: string) {
         if (item.status === 'uploading') await send(item.id);
       }
     },
-    [send],
+    [send, rules],
   );
 
   const retry = useCallback((id: string) => send(id), [send]);

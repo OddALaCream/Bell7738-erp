@@ -10,7 +10,6 @@ export const UserStatus = {
 } as const;
 export type UserStatus = (typeof UserStatus)[keyof typeof UserStatus];
 
-/** GET /auth/me — see docs/FRONTEND_BACKEND_GAPS.md: no roles/permissions here yet. */
 export interface UserSummary {
   id: string;
   email: string;
@@ -19,6 +18,20 @@ export interface UserSummary {
   avatarStorageKey: string | null;
   isOwner: boolean;
   status: UserStatus;
+}
+
+/**
+ * `GET /auth/me` (and the login response): the identity plus what the UI needs
+ * to build navigation. `permissions` are the backend's effective keys — the
+ * Owner receives the whole catalog. A UX snapshot only: the API authorizes
+ * every request again.
+ */
+export interface CurrentUser extends UserSummary {
+  roles: RoleSummary[];
+  permissions: string[];
+  capabilities: {
+    uploads: { maxBytes: number; allowedExtensions: string[] };
+  };
 }
 
 export interface Permission {
@@ -39,10 +52,7 @@ export interface Role extends RoleSummary {
   permissions: Permission[];
 }
 
-/**
- * Matches ADMIN_USER_SELECT in apps/api/src/users/users.service.ts — no
- * `roles` field is returned here (see docs/FRONTEND_BACKEND_GAPS.md).
- */
+/** Matches ADMIN_USER_SELECT in apps/api/src/users/users.service.ts (roles are summaries, never permissions). */
 export interface AdminUser {
   id: string;
   email: string;
@@ -54,15 +64,17 @@ export interface AdminUser {
   createdAt: string;
   updatedAt: string;
   lastLoginAt: string | null;
+  roles: RoleSummary[];
 }
 
-/** Matches TEAM_USER_SELECT — GET /team and GET /users/:userId/profile. No roles. */
+/** Matches TEAM_USER_SELECT — GET /team. */
 export interface TeamUser {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
   avatarStorageKey: string | null;
+  roles: RoleSummary[];
 }
 
 export interface Session {
@@ -199,8 +211,9 @@ export interface ProjectDocument {
   /** Bytes. */
   size: number;
   checksumSha256: string;
-  /** Only the id: the API returns no uploader name (see docs/FRONTEND_BACKEND_GAPS.md). */
   uploadedById: string;
+  /** Name only; a person who left the project is still named. */
+  uploadedBy: { id: string; firstName: string; lastName: string };
   createdAt: string;
 }
 export type NotificationType =
@@ -251,14 +264,16 @@ export type ActivityEventType =
   | 'DOCUMENT_DELETED';
 
 /**
- * Matches ACTIVITY_SELECT in apps/api/src/activity/activity.service.ts: no
- * actor name and no readable message — text is composed client-side from
- * `type` + `metadata` (see docs/FRONTEND_BACKEND_GAPS.md).
+ * Matches ACTIVITY_SELECT in apps/api/src/activity/activity.service.ts: the
+ * actor and project names come with the event, but there is no readable
+ * message — text is composed client-side from `type` + `metadata`.
  */
 export interface ActivityEvent {
   id: string;
   projectId: string;
+  project: { id: string; name: string };
   actorId: string | null;
+  actor: { id: string; firstName: string; lastName: string } | null;
   type: ActivityEventType;
   entityType: string;
   entityId: string | null;

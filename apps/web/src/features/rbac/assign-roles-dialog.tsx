@@ -16,11 +16,10 @@ import { useRoles } from './hooks';
 import type { AdminUser } from '@/types/domain';
 
 /**
- * docs/FRONTEND_BACKEND_GAPS.md: no endpoint returns a user's current
- * roles, so this dialog can't be prefilled with reality. It opens fully
- * unchecked and says so loudly — PUT /users/:id/roles replaces the
- * complete set, so submitting without re-selecting existing roles removes
- * them.
+ * `PUT /users/:id/roles` replaces the complete set, so the dialog opens with
+ * the roles the person really has (from the admin user response) already
+ * checked: saving without touching anything changes nothing, and only what the
+ * admin unchecks is removed.
  */
 export function AssignRolesDialog({
   open,
@@ -55,7 +54,7 @@ function AssignRolesForm({
   onSubmit: (roleIds: string[]) => Promise<unknown>;
 }) {
   const rolesQuery = useRoles();
-  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(user?.roles.map((role) => role.id) ?? []));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,9 +94,8 @@ function AssignRolesForm({
       <div className="flex gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
         <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
         <p>
-          Esta acción <strong>reemplaza todos los roles</strong> del usuario. El sistema actual no puede mostrar qué
-          roles tiene ya asignados, así que marca aquí <strong>todos</strong> los roles que debe conservar —
-          cualquiera que dejes sin marcar será removido.
+          Los roles que <strong>ya tiene</strong> aparecen marcados. Al guardar se reemplaza el conjunto completo: los
+          roles que desmarques se retiran y los que marques se añaden.
         </p>
       </div>
 

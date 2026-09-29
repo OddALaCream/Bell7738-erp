@@ -3,7 +3,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { UserAvatar } from '@/components/ui/avatar';
 import { formatDateTime } from '@/lib/dates';
-import { cn } from '@/lib/utils';
+import { cn, fullName } from '@/lib/utils';
 import type { ActivityEvent } from '@/types/domain';
 import { activityHref, describeActivity, type NameOf } from './describe';
 import type { Person } from './hooks';
@@ -29,15 +29,18 @@ export function ActivityFeed({
   return (
     <ul className={cn('divide-y divide-border', className)}>
       {events.map((event) => {
-        const actor = event.actorId ? people.get(event.actorId) : undefined;
+        // The event carries its actor and project; the directory only covers
+        // people the sentence itself mentions ("añadió a …").
+        const actor = event.actor ?? (event.actorId ? people.get(event.actorId) : undefined);
+        const actorName = event.actor ? fullName(event.actor) : nameOf(event.actorId);
         const href = activityHref(event);
-        const projectName = projectNames?.get(event.projectId);
+        const projectName = projectNames ? (event.project?.name ?? projectNames.get(event.projectId)) : undefined;
         const content = (
           <>
             <UserAvatar firstName={actor?.firstName ?? '?'} lastName={actor?.lastName ?? ''} className="size-7" />
             <span className="min-w-0 flex-1 space-y-0.5 text-sm">
               <span className="block">
-                <strong className="font-medium">{nameOf(event.actorId)}</strong> {describeActivity(event, nameOf)}
+                <strong className="font-medium">{actorName}</strong> {describeActivity(event, nameOf)}
               </span>
               <span className="block text-xs text-muted-foreground">
                 {projectName && <>{projectName} · </>}

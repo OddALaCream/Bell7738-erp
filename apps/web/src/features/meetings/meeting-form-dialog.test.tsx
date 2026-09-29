@@ -8,7 +8,10 @@ import type { Meeting, MeetingDetail, ProjectMember } from '@/types/domain';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/features/auth/auth-context', () => ({
-  useAuth: () => ({ user: { id: 'u1', firstName: 'Ana', lastName: 'Ruiz', email: 'ana@x.io', isOwner: false } }),
+  useAuth: () => ({
+    user: { id: 'u1', firstName: 'Ana', lastName: 'Ruiz', email: 'ana@x.io', isOwner: false },
+    can: () => true,
+  }),
 }));
 vi.mock('./api', () => ({
   createMeeting: vi.fn(),

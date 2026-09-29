@@ -1,5 +1,5 @@
 import { toDateOnly } from '@/lib/dates';
-import type { ActivityEvent, CalendarItem } from '@/types/domain';
+import type { CalendarItem } from '@/types/domain';
 
 type TaskItem = Extract<CalendarItem, { kind: 'task' }>;
 type MeetingItem = Extract<CalendarItem, { kind: 'meeting' }>;
@@ -22,13 +22,5 @@ export function nextMeetings(items: CalendarItem[], nowMs: number, limit: number
   return items
     .filter((item): item is MeetingItem => item.kind === 'meeting' && Date.parse(item.end) > nowMs)
     .sort((a, b) => Date.parse(a.start) - Date.parse(b.start))
-    .slice(0, limit);
-}
-
-/** Newest-first merge of per-project activity pages, capped for a dashboard block. */
-export function mergeRecentActivity(pages: ActivityEvent[][], limit: number): ActivityEvent[] {
-  return pages
-    .flat()
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || a.id.localeCompare(b.id))
     .slice(0, limit);
 }

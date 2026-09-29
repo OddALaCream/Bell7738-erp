@@ -12,6 +12,12 @@ export interface ListActivityParams {
   pageSize?: number;
 }
 
+/** Newest first across every project the person can see (the dashboard feed). */
+export async function listActivityFeed(params: ListActivityParams = {}) {
+  const { data } = await http.get<ApiCollectionResponse<ActivityEvent>>('/activity', { params });
+  return data;
+}
+
 /** Newest first; visible to anyone who can see the project. */
 export async function listProjectActivity(projectId: string, params: ListActivityParams = {}) {
   const { data } = await http.get<ApiCollectionResponse<ActivityEvent>>(`/projects/${projectId}/activity`, { params });

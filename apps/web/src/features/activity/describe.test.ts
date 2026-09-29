@@ -8,7 +8,9 @@ function event(overrides: Partial<ActivityEvent>): ActivityEvent {
   return {
     id: 'e1',
     projectId: 'p1',
+    project: { id: 'p1', name: 'Proyecto' },
     actorId: 'u1',
+    actor: { id: 'u1', firstName: 'Ana', lastName: 'Ruiz' },
     type: 'TASK_COMPLETED',
     entityType: 'Task',
     entityId: 't1',

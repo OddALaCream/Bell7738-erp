@@ -19,6 +19,7 @@ const stored: ProjectDocument = {
   size: 1,
   checksumSha256: 'x',
   uploadedById: 'u1',
+  uploadedBy: { id: 'u1', firstName: 'Ana', lastName: 'Ruiz' },
   createdAt: '2026-09-28T15:00:00Z',
 };
 

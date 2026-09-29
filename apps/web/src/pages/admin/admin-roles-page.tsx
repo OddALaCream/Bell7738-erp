@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { RoleBadge } from '@/components/ui/badge';
 import { ApiError } from '@/lib/api-types';
+import { useAuth } from '@/features/auth/auth-context';
 import { toast } from 'sonner';
 import { useCreateRole, useDeleteRole, useRoles, useUpdateRole } from '@/features/rbac/hooks';
 import { isFullRole, type RolePayload } from '@/features/rbac/api';
@@ -16,6 +17,8 @@ import type { Role, RoleSummary } from '@/types/domain';
 
 export function AdminRolesPage() {
   useSetBreadcrumb('Administración / Roles');
+  const { can } = useAuth();
+  const canManage = can('ROLES_MANAGE');
   const rolesQuery = useRoles();
   const createRole = useCreateRole();
   const updateRole = useUpdateRole();
@@ -30,9 +33,11 @@ export function AdminRolesPage() {
           <h1 className="text-lg font-semibold">Roles</h1>
           <p className="text-sm text-muted-foreground">Agrupaciones configurables de permisos.</p>
         </div>
-        <Button onClick={() => setEditing(null)}>
-          <Plus /> Crear rol
-        </Button>
+        {canManage && (
+          <Button onClick={() => setEditing(null)}>
+            <Plus /> Crear rol
+          </Button>
+        )}
       </div>
 
       <QueryState
@@ -53,19 +58,21 @@ export function AdminRolesPage() {
                       </span>
                     )}
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button variant="ghost" size="icon" aria-label="Editar rol" onClick={() => setEditing(role)}>
-                      <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Eliminar rol"
-                      onClick={() => setDeleting(role)}
-                    >
-                      <Trash2 className="text-destructive" />
-                    </Button>
-                  </div>
+                  {canManage && (
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button variant="ghost" size="icon" aria-label="Editar rol" onClick={() => setEditing(role)}>
+                        <Pencil />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Eliminar rol"
+                        onClick={() => setDeleting(role)}
+                      >
+                        <Trash2 className="text-destructive" />
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}

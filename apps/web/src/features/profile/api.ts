@@ -1,14 +1,38 @@
 import { api } from '@/lib/api-client';
 import { changePassword as authChangePassword } from '@/features/auth/api';
-import type { ProjectSummary, Task, UserStatus } from '@/types/domain';
+import type { ProjectRole, ProjectStatus, RoleSummary, TaskStatus, UserStatus } from '@/types/domain';
 
-/**
- * `apps/api/src/users/users.service.ts`'s EMPTY_PROFILE_EXTRAS currently
- * hardcodes roles/projects/tasks to empty arrays for every profile — see
- * docs/FRONTEND_BACKEND_GAPS.md. Typed here as the documented shape so the
- * UI renders correctly once the backend fills it in.
- */
-export interface OwnProfile {
+/** What `/me/profile` and `/users/:id/profile` report about a person's work, as far as the observer may see it. */
+export interface ProfileProject {
+  id: string;
+  name: string;
+  status: ProjectStatus;
+  /** The person's local role in the project. */
+  role: ProjectRole;
+  startDate: string | null;
+  expectedEndDate: string | null;
+}
+
+export interface ProfileTask {
+  id: string;
+  projectId: string;
+  projectName: string;
+  title: string;
+  startDate: string;
+  dueDate: string;
+  status: TaskStatus;
+  completedAt: string | null;
+}
+
+export interface ProfileExtras {
+  roles: RoleSummary[];
+  activeProjects: ProfileProject[];
+  pastProjects: ProfileProject[];
+  activeTasks: ProfileTask[];
+  completedTasks: ProfileTask[];
+}
+
+export interface OwnProfile extends ProfileExtras {
   id: string;
   email: string;
   firstName: string;
@@ -19,24 +43,14 @@ export interface OwnProfile {
   createdAt: string;
   updatedAt: string;
   lastLoginAt: string | null;
-  roles: string[];
-  activeProjects: ProjectSummary[];
-  pastProjects: ProjectSummary[];
-  activeTasks: Task[];
-  completedTasks: Task[];
 }
 
-export interface PublicProfile {
+export interface PublicProfile extends ProfileExtras {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
   avatarStorageKey: string | null;
-  roles: string[];
-  activeProjects: ProjectSummary[];
-  pastProjects: ProjectSummary[];
-  activeTasks: Task[];
-  completedTasks: Task[];
 }
 
 export async function getOwnProfile(): Promise<OwnProfile> {
@@ -48,8 +62,9 @@ export interface UpdateOwnProfilePayload {
   lastName?: string;
 }
 
-export async function updateOwnProfile(payload: UpdateOwnProfilePayload): Promise<OwnProfile> {
-  return api.patch<OwnProfile>('/me/profile', payload);
+/** The write answers with the person's own data only; the lists are re-read with the profile query. */
+export async function updateOwnProfile(payload: UpdateOwnProfilePayload): Promise<Omit<OwnProfile, keyof ProfileExtras>> {
+  return api.patch<Omit<OwnProfile, keyof ProfileExtras>>('/me/profile', payload);
 }
 
 export async function getUserProfile(userId: string): Promise<PublicProfile> {

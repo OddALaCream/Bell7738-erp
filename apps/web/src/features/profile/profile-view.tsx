@@ -1,40 +1,23 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, FolderKanban, Info, ListTodo } from 'lucide-react';
+import { CheckCircle2, FolderKanban, ListTodo } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Badge, RoleBadge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/common/empty-state';
 import { ProjectStatusBadge } from '@/features/projects/status-badge';
+import type { ProfileExtras, ProfileProject, ProfileTask } from './api';
 import { formatDateOnly } from '@/lib/dates';
 import { cn, fullName } from '@/lib/utils';
-import type { ProjectStatus, TaskStatus } from '@/types/domain';
 
-export interface ProfileProject {
-  id: string;
-  name: string;
-  status: ProjectStatus;
-}
+/** What the four cards and the role badges show: the server's lists as they are. */
+export type ProfileContent = ProfileExtras;
 
-export interface ProfileTask {
-  id: string;
-  projectId: string;
-  title: string;
-  dueDate: string;
-  status: TaskStatus;
-}
-
-/** What the four cards show; the page decides where each list comes from. */
-export interface ProfileContent {
-  roles: string[];
-  activeProjects: ProfileProject[];
-  pastProjects: ProfileProject[];
-  activeTasks: ProfileTask[];
-  completedTasks: ProfileTask[];
-}
-
-export type SectionState = 'ready' | 'loading' | 'error';
+const PROJECT_ROLE_LABEL: Record<ProfileProject['role'], string> = {
+  MANAGER: 'Manager',
+  MEMBER: 'Miembro',
+  VIEWER: 'Viewer',
+};
 
 function ProjectList({ projects, empty }: { projects: ProfileProject[]; empty: string }) {
   if (projects.length === 0) return <EmptyState title={empty} className="border-none py-6" />;
@@ -46,7 +29,10 @@ function ProjectList({ projects, empty }: { projects: ProfileProject[]; empty: s
             to={`/projects/${project.id}/overview`}
             className="flex items-center justify-between gap-2 rounded-md px-1 py-1.5 text-sm hover:bg-accent"
           >
-            <span className="truncate">{project.name}</span>
+            <span className="min-w-0">
+              <span className="block truncate">{project.name}</span>
+              <span className="block text-xs text-muted-foreground">{PROJECT_ROLE_LABEL[project.role]}</span>
+            </span>
             <ProjectStatusBadge status={project.status} />
           </Link>
         </li>
@@ -67,9 +53,12 @@ function TaskList({ tasks, empty, done }: { tasks: ProfileTask[]; empty: string;
           >
             <span className="flex min-w-0 items-center gap-1.5">
               {done && <CheckCircle2 className="size-3.5 shrink-0 text-brand-600" aria-hidden="true" />}
-              <span className={cn('truncate', done && 'text-muted-foreground line-through')}>
-                {done && <span className="sr-only">Terminada: </span>}
-                {task.title}
+              <span className="min-w-0">
+                <span className={cn('block truncate', done && 'text-muted-foreground line-through')}>
+                  {done && <span className="sr-only">Terminada: </span>}
+                  {task.title}
+                </span>
+                <span className="block truncate text-xs text-muted-foreground">{task.projectName}</span>
               </span>
             </span>
             <span className="shrink-0 text-xs text-muted-foreground">{formatDateOnly(task.dueDate, { day: 'numeric', month: 'short' })}</span>
@@ -80,17 +69,7 @@ function TaskList({ tasks, empty, done }: { tasks: ProfileTask[]; empty: string;
   );
 }
 
-function ProfileCard({
-  title,
-  icon: Icon,
-  state,
-  children,
-}: {
-  title: string;
-  icon?: typeof ListTodo;
-  state: SectionState;
-  children: ReactNode;
-}) {
+function ProfileCard({ title, icon: Icon, children }: { title: string; icon?: typeof ListTodo; children: ReactNode }) {
   return (
     <Card>
       <CardHeader>
@@ -98,42 +77,26 @@ function ProfileCard({
           {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />} {title}
         </h2>
       </CardHeader>
-      <CardContent>
-        {state === 'loading' ? (
-          <div aria-busy="true" className="space-y-2">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-          </div>
-        ) : state === 'error' ? (
-          <p role="alert" className="py-4 text-sm text-muted-foreground">
-            No se pudo cargar esta sección.
-          </p>
-        ) : (
-          children
-        )}
-      </CardContent>
+      <CardContent>{children}</CardContent>
     </Card>
   );
 }
 
 /**
  * docs/UI-UX.md "Perfil": avatar, name, email, roles, projects (active and
- * previous) and tasks (active and finished). `note` explains data the server
- * can't provide yet, instead of presenting it as an empty state.
+ * previous) and tasks (active and finished), exactly as the API reports them
+ * for this observer — an empty list means there is nothing visible to show.
  */
 export function ProfileView({
   profile,
   content,
-  tasksState = 'ready',
-  projectsState = 'ready',
-  note,
+  isOwner = false,
   children,
 }: {
   profile: { firstName: string; lastName: string; email: string };
   content: ProfileContent;
-  tasksState?: SectionState;
-  projectsState?: SectionState;
-  note?: string;
+  /** Only known for your own profile; the directory never reveals who the Owner is. */
+  isOwner?: boolean;
   children?: ReactNode;
 }) {
   return (
@@ -148,31 +111,26 @@ export function ProfileView({
 
       {children}
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        {content.roles.length > 0 ? (
-          content.roles.map((role) => <Badge key={role}>{role}</Badge>)
-        ) : (
-          <p className="text-sm text-muted-foreground">Los roles todavía no se muestran en el perfil.</p>
-        )}
-      </div>
-
-      {note && (
-        <p role="note" className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-          <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" /> {note}
-        </p>
+      {(isOwner || content.roles.length > 0) && (
+        <div className="flex flex-wrap items-center gap-1.5" aria-label="Roles">
+          {isOwner && <Badge>Owner</Badge>}
+          {content.roles.map((role) => (
+            <RoleBadge key={role.id} name={role.name} color={role.color} />
+          ))}
+        </div>
       )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <ProfileCard title="Proyectos activos" icon={FolderKanban} state={projectsState}>
+        <ProfileCard title="Proyectos activos" icon={FolderKanban}>
           <ProjectList projects={content.activeProjects} empty="Sin proyectos activos" />
         </ProfileCard>
-        <ProfileCard title="Tareas activas" icon={ListTodo} state={tasksState}>
+        <ProfileCard title="Tareas activas" icon={ListTodo}>
           <TaskList tasks={content.activeTasks} empty="Sin tareas activas" />
         </ProfileCard>
-        <ProfileCard title="Proyectos anteriores" state={projectsState}>
+        <ProfileCard title="Proyectos anteriores">
           <ProjectList projects={content.pastProjects} empty="Sin proyectos anteriores" />
         </ProfileCard>
-        <ProfileCard title="Tareas terminadas" state={tasksState}>
+        <ProfileCard title="Tareas terminadas">
           <TaskList tasks={content.completedTasks} empty="Sin tareas terminadas" done />
         </ProfileCard>
       </div>

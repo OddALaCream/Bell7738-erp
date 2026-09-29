@@ -1,7 +1,7 @@
 import type { ComponentType } from 'react';
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import { AppShell } from '@/components/layout/app-shell';
-import { RequireAuth, RequireGuest } from './protected-route';
+import { RequireAuth, RequireGuest, RequirePermission } from './protected-route';
 import { LoginPage } from '@/pages/login-page';
 import { AcceptInvitationPage } from '@/pages/accept-invitation-page';
 import { DashboardPage } from '@/pages/dashboard-page';
@@ -72,9 +72,30 @@ export const router = createBrowserRouter([
           { path: 'profile/sessions', element: <ProfileSessionsPage /> },
           { path: 'users/:userId/profile', element: <UserProfilePage /> },
           { path: 'notifications', element: <NotificationsPage /> },
-          { path: 'admin/users', lazy: lazyPage(() => import('@/pages/admin/admin-users-page'), 'AdminUsersPage') },
-          { path: 'admin/roles', lazy: lazyPage(() => import('@/pages/admin/admin-roles-page'), 'AdminRolesPage') },
-          { path: 'admin/audit', lazy: lazyPage(() => import('@/pages/admin/admin-audit-page'), 'AdminAuditPage') },
+          {
+            element: (
+              <RequirePermission anyOf={['USERS_VIEW']}>
+                <Outlet />
+              </RequirePermission>
+            ),
+            children: [{ path: 'admin/users', lazy: lazyPage(() => import('@/pages/admin/admin-users-page'), 'AdminUsersPage') }],
+          },
+          {
+            element: (
+              <RequirePermission anyOf={['ROLES_VIEW', 'ROLES_MANAGE']}>
+                <Outlet />
+              </RequirePermission>
+            ),
+            children: [{ path: 'admin/roles', lazy: lazyPage(() => import('@/pages/admin/admin-roles-page'), 'AdminRolesPage') }],
+          },
+          {
+            element: (
+              <RequirePermission anyOf={['AUDIT_VIEW']}>
+                <Outlet />
+              </RequirePermission>
+            ),
+            children: [{ path: 'admin/audit', lazy: lazyPage(() => import('@/pages/admin/admin-audit-page'), 'AdminAuditPage') }],
+          },
           { path: '*', element: <NotFoundPage /> },
         ],
       },

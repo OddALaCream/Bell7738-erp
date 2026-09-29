@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { Download, FileText, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -14,9 +14,9 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { ApiError } from '@/lib/api-types';
 import { formatDateOnly, instantToLocalDay } from '@/lib/dates';
 import { formatBytes } from '@/lib/format';
+import { canManageInProject, canWriteInProject } from '@/lib/permissions';
 import { cn, fullName } from '@/lib/utils';
 import { useAuth } from '@/features/auth/auth-context';
-import { useProjectMembers } from '@/features/projects/hooks';
 import * as documentsApi from '@/features/documents/api';
 import { fileKindOf, FILE_KIND_LABEL } from '@/features/documents/file-kind';
 import { FileKindIcon } from '@/features/documents/file-kind-icon';
@@ -42,7 +42,7 @@ function parseOrdering(value: string | null): Ordering {
 
 export function ProjectDocumentsPage() {
   const project = useOutletContext<ProjectDetail>();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -52,7 +52,6 @@ export function ProjectDocumentsPage() {
   const ordering = parseOrdering(searchParams.get('order'));
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
 
-  const membersQuery = useProjectMembers(project.id);
   const documentsQuery = useDocuments(project.id, {
     search: debouncedSearch || undefined,
     page,
@@ -62,12 +61,6 @@ export function ProjectDocumentsPage() {
   });
   const deleteDocument = useDeleteDocument(project.id);
   const uploads = useDocumentUploads(project.id);
-
-  // The API returns only `uploadedById`, so names come from the project's members.
-  const memberNames = useMemo(
-    () => new Map((membersQuery.data ?? []).map((member) => [member.userId, fullName(member.user)] as const)),
-    [membersQuery.data],
-  );
 
   function updateParams(changes: Record<string, string | undefined>) {
     setSearchParams(
@@ -102,11 +95,11 @@ export function ProjectDocumentsPage() {
     }
   }
 
-  // A VIEWER never uploads. A null role is an org-wide override, which the API decides on.
-  const canUpload = project.viewerCapabilities.role !== 'VIEWER';
-  const isOwner = user?.isOwner ?? false;
+  const role = project.viewerCapabilities.role;
+  const canUpload = canWriteInProject(can, 'DOCUMENTS_UPLOAD', role);
   const canDelete = (document: ProjectDocument) =>
-    isOwner || project.viewerCapabilities.role === 'MANAGER' || document.uploadedById === user?.id;
+    canManageInProject(can, 'DOCUMENTS_DELETE', role) ||
+    (can('DOCUMENTS_DELETE') && role === 'MEMBER' && document.uploadedById === user?.id);
 
   const filtered = !!debouncedSearch;
 
@@ -179,7 +172,6 @@ export function ProjectDocumentsPage() {
             <ul className="space-y-2">
               {data.data.map((document) => {
                 const kind = fileKindOf(document.originalName);
-                const uploader = memberNames.get(document.uploadedById);
                 return (
                   <li
                     key={document.id}
@@ -190,7 +182,7 @@ export function ProjectDocumentsPage() {
                       <p className="truncate text-sm font-medium">{document.originalName}</p>
                       <p className="text-xs text-muted-foreground">
                         {FILE_KIND_LABEL[kind]} · {formatBytes(document.size)} ·{' '}
-                        {uploader ? `Subido por ${uploader}` : 'Subido por un usuario que ya no es miembro'} ·{' '}
+                        Subido por {fullName(document.uploadedBy)} ·{' '}
                         {formatDateOnly(instantToLocalDay(document.createdAt))}
                       </p>
                     </div>

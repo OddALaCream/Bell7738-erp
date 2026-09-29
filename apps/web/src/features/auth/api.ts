@@ -1,10 +1,10 @@
 import { api, http, setAccessToken } from '@/lib/api-client';
-import type { UserSummary, Session } from '@/types/domain';
+import type { CurrentUser, Session } from '@/types/domain';
 
 export interface LoginResponse {
   accessToken: string;
   expiresIn: number;
-  user: UserSummary;
+  user: CurrentUser;
 }
 
 export async function login(email: string, password: string): Promise<LoginResponse> {
@@ -29,8 +29,8 @@ export async function logoutAll(): Promise<void> {
   }
 }
 
-export async function fetchMe(): Promise<UserSummary> {
-  return api.get<UserSummary>('/auth/me');
+export async function fetchMe(): Promise<CurrentUser> {
+  return api.get<CurrentUser>('/auth/me');
 }
 
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {

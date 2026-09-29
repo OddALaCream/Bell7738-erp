@@ -17,6 +17,14 @@ import { ListActivityDto } from './dto/list-activity.dto.js';
 export class ActivityController {
   constructor(private readonly activity: ActivityService) {}
 
+  @Get('activity')
+  listFeed(
+    @Query() query: ListActivityDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.activity.listFeed(query, actor);
+  }
+
   @Get('projects/:projectId/activity')
   list(
     @Param('projectId', ParseUUIDPipe) projectId: string,

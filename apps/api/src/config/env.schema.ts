@@ -1,7 +1,16 @@
 import { z } from 'zod';
 import { EXTENSION_MIME_MAP } from '../storage/file-signatures.js';
+import { durationToMs } from '../common/duration.js';
 
 const DEFAULT_ALLOWED_EXTENSIONS = Object.keys(EXTENSION_MIME_MAP).join(',');
+const tokenTtl = z
+  .string()
+  .min(1)
+  .max(100)
+  .refine((value) => {
+    const milliseconds = durationToMs(value);
+    return Number.isFinite(milliseconds) && milliseconds >= 1000;
+  }, 'Token TTL must be a valid duration of at least one second.');
 
 const booleanFromString = z
   .union([z.literal('true'), z.literal('false')])
@@ -23,8 +32,8 @@ export const envSchema = z
     JWT_ACCESS_SECRET: z.string().min(32),
     JWT_REFRESH_SECRET: z.string().min(32),
     REFRESH_TOKEN_HASH_SECRET: z.string().min(32),
-    ACCESS_TOKEN_TTL: z.string().min(1).default('15m'),
-    REFRESH_TOKEN_TTL: z.string().min(1).default('7d'),
+    ACCESS_TOKEN_TTL: tokenTtl.default('15m'),
+    REFRESH_TOKEN_TTL: tokenTtl.default('7d'),
     COOKIE_SECURE: booleanFromString.optional(),
     INVITATION_TTL_HOURS: z.coerce.number().int().positive().default(72),
     PROJECTS_ENDING_SOON_DAYS: z.coerce.number().int().positive().default(7),

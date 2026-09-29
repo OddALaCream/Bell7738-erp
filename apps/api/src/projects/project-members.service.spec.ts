@@ -8,6 +8,7 @@ import { ProjectMembersService } from './project-members.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { ProjectAccessService } from './project-access.service.js';
 import type { ActivityService } from '../activity/activity.service.js';
+import type { AuditService } from '../audit/audit.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 
 const actor: AuthenticatedUser = {
@@ -78,12 +79,16 @@ function makeService(overrides?: {
   const activity = {
     record: vi.fn().mockResolvedValue(undefined),
   } as unknown as ActivityService;
+  const audit = {
+    logInTransaction: vi.fn().mockResolvedValue(undefined),
+  } as unknown as AuditService;
 
   return {
-    service: new ProjectMembersService(prisma, access, activity),
+    service: new ProjectMembersService(prisma, access, activity, audit),
     prisma,
     access,
     activity,
+    audit,
     tx,
   };
 }
@@ -94,6 +99,30 @@ describe('ProjectMembersService.list', () => {
     await service.list('proj-1', actor);
     expect(access.assertCanViewProject).toHaveBeenCalledWith(actor, 'proj-1');
   });
+});
+
+describe('ProjectMembersService UUID authorization', () => {
+  it.each(['remove', 'demote'])(
+    'rejects %s of the last manager with uppercase UUID',
+    async (operation) => {
+      const userId = 'abcdefab-1234-4567-8901-abcdefabcdef';
+      const { service, tx } = makeService({
+        activeMembership: { role: 'MANAGER' },
+      });
+      tx.$queryRaw.mockResolvedValue([{ userId }]);
+      const request =
+        operation === 'remove'
+          ? service.remove('proj-1', userId.toUpperCase(), actor)
+          : service.updateRole(
+              'proj-1',
+              userId.toUpperCase(),
+              { role: 'VIEWER' },
+              actor,
+            );
+      await expect(request).rejects.toBeInstanceOf(ConflictException);
+      expect(tx.projectMember.update).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('ProjectMembersService.add', () => {

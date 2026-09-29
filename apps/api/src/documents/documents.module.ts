@@ -4,6 +4,7 @@ import { RbacModule } from '../rbac/rbac.module.js';
 import { ProjectAccessModule } from '../projects/project-access.module.js';
 import { StorageModule } from '../storage/storage.module.js';
 import { ActivityModule } from '../activity/activity.module.js';
+import { AuditWriterModule } from '../audit/audit-writer.module.js';
 import { DocumentsController } from './documents.controller.js';
 import { DocumentsService } from './documents.service.js';
 import { DocumentUploadInterceptor } from './document-upload.interceptor.js';
@@ -15,6 +16,7 @@ import { DocumentUploadInterceptor } from './document-upload.interceptor.js';
     ProjectAccessModule,
     StorageModule,
     ActivityModule,
+    AuditWriterModule,
   ],
   controllers: [DocumentsController],
   providers: [DocumentsService, DocumentUploadInterceptor],

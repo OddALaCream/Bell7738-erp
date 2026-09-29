@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -10,6 +11,7 @@ import { EffectivePermissionsService } from '../rbac/effective-permissions.servi
 import { ProjectAccessService } from '../projects/project-access.service.js';
 import { StorageService } from '../storage/storage.service.js';
 import { ActivityService } from '../activity/activity.service.js';
+import { AuditService } from '../audit/audit.service.js';
 import {
   EXTENSION_MIME_MAP,
   extensionOf,
@@ -31,6 +33,7 @@ const DOCUMENT_SELECT = {
   size: true,
   checksumSha256: true,
   uploadedById: true,
+  uploadedBy: { select: { id: true, firstName: true, lastName: true } },
   createdAt: true,
 } as const;
 
@@ -62,6 +65,7 @@ export class DocumentsService {
     private readonly access: ProjectAccessService,
     private readonly storage: StorageService,
     private readonly activity: ActivityService,
+    private readonly audit: AuditService,
   ) {}
 
   /** docs/RBAC.md "Listar/descargar: cualquier usuario con visibilidad del proyecto." */
@@ -128,9 +132,10 @@ export class DocumentsService {
    */
   async create(
     projectId: string,
-    file: Express.Multer.File,
+    file: Express.Multer.File | undefined,
     actor: AuthenticatedUser,
   ) {
+    if (!file) throw new BadRequestException('A file is required.');
     try {
       await this.access.assertCanViewProject(actor, projectId);
       if (
@@ -163,17 +168,27 @@ export class DocumentsService {
 
       const checksumSha256 = await this.computeChecksum(file.filename);
 
-      const document = await this.prisma.document.create({
-        data: {
-          projectId,
-          originalName: sanitizeOriginalName(file.originalname),
-          storageKey: file.filename,
-          mimeType: canonicalMimeType,
-          size: BigInt(file.size),
-          checksumSha256,
-          uploadedById: actor.id,
-        },
-        select: DOCUMENT_SELECT,
+      const document = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.document.create({
+          data: {
+            projectId,
+            originalName: sanitizeOriginalName(file.originalname),
+            storageKey: file.filename,
+            mimeType: canonicalMimeType,
+            size: BigInt(file.size),
+            checksumSha256,
+            uploadedById: actor.id,
+          },
+          select: DOCUMENT_SELECT,
+        });
+        await this.audit.logInTransaction(tx, {
+          actorId: actor.id,
+          action: 'DOCUMENT_UPLOADED',
+          entityType: 'Document',
+          entityId: created.id,
+          metadata: { projectId },
+        });
+        return created;
       });
       await this.activity.record({
         projectId,
@@ -239,18 +254,30 @@ export class DocumentsService {
       throw new ForbiddenException();
 
     if (!document.deletedAt) {
-      await this.prisma.document.updateMany({
-        where: { id: documentId, projectId, deletedAt: null },
-        data: { deletedAt: new Date(), deletedById: actor.id },
+      const changed = await this.prisma.$transaction(async (tx) => {
+        const { count } = await tx.document.updateMany({
+          where: { id: documentId, projectId, deletedAt: null },
+          data: { deletedAt: new Date(), deletedById: actor.id },
+        });
+        if (count > 0)
+          await this.audit.logInTransaction(tx, {
+            actorId: actor.id,
+            action: 'DOCUMENT_DELETED',
+            entityType: 'Document',
+            entityId: documentId,
+            metadata: { projectId },
+          });
+        return count > 0;
       });
       // Only recorded on the genuine transition, not a repeat idempotent call.
-      await this.activity.record({
-        projectId,
-        actorId: actor.id,
-        type: 'DOCUMENT_DELETED',
-        entityType: 'Document',
-        entityId: documentId,
-      });
+      if (changed)
+        await this.activity.record({
+          projectId,
+          actorId: actor.id,
+          type: 'DOCUMENT_DELETED',
+          entityType: 'Document',
+          entityId: documentId,
+        });
     }
     // Retryable regardless of whether this call performed the soft-delete or
     // a previous one already did.
@@ -270,13 +297,14 @@ export class DocumentsService {
     );
     if (!keys.has('DOCUMENTS_DELETE')) return false;
     if (keys.has('PROJECTS_VIEW_ALL')) return true;
-    if (document.uploadedById === actor.id) return true;
-
     const membership = await this.access.getActiveMembership(
       actor.id,
       projectId,
     );
-    return membership?.role === 'MANAGER';
+    return (
+      membership?.role === 'MANAGER' ||
+      (membership?.role === 'MEMBER' && document.uploadedById === actor.id)
+    );
   }
 
   private async computeChecksum(storageKey: string): Promise<string> {

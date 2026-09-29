@@ -35,10 +35,10 @@ export class CreateProjectDto {
   status: ProjectStatusValue = 'PLANNED';
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   startDate?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   expectedEndDate?: string;
 }

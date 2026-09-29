@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, ai/backend-qa]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: erp_ci
+          POSTGRES_USER: erp_ci
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U erp_ci -d erp_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://erp_ci:ci-only-password@localhost:5432/erp_ci
+      APP_BASE_URL: http://localhost:3000
+      WEB_ORIGIN: http://localhost:5173
+      JWT_ACCESS_SECRET: ci-access-secret-not-for-production-000001
+      JWT_REFRESH_SECRET: ci-refresh-secret-not-for-production-00001
+      REFRESH_TOKEN_HASH_SECRET: ci-hash-secret-not-for-production-00000001
+      COOKIE_SECURE: 'false'
+      OWNER_EMAIL: ci-owner@example.test
+      OWNER_PASSWORD: ci-owner-test-passphrase
+      OWNER_FIRST_NAME: CI
+      OWNER_LAST_NAME: Owner
+      STORAGE_ROOT: ${{ github.workspace }}/.qa-uploads
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4; packageManager pins pnpm
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.22.3'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Initialize isolated test database and storage
+        run: |
+          mkdir -p "$STORAGE_ROOT"
+          pnpm --filter api exec prisma migrate deploy
+          pnpm --filter api exec prisma db seed
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm --filter api test:e2e
+      - run: pnpm --filter api test:persistence
+      - run: pnpm build
+
+  docker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      COMPOSE_PROJECT_NAME: erp-ci
+      POSTGRES_DB: erp_ci
+      POSTGRES_USER: erp_root
+      POSTGRES_PASSWORD: ci-root-only-password
+      APP_DB_USER: erp_app
+      APP_DB_PASSWORD: ci-app-only-password
+      DATABASE_URL: postgresql://erp_app:ci-app-only-password@postgres:5432/erp_ci
+      APP_BASE_URL: https://ci.example.test
+      WEB_ORIGIN: https://ci.example.test
+      APP_DOMAIN: ':80'
+      JWT_ACCESS_SECRET: ci-access-secret-not-for-production-000001
+      JWT_REFRESH_SECRET: ci-refresh-secret-not-for-production-00001
+      REFRESH_TOKEN_HASH_SECRET: ci-hash-secret-not-for-production-00000001
+      OWNER_EMAIL: ci-owner@example.test
+      OWNER_PASSWORD: ci-owner-test-passphrase
+      OWNER_FIRST_NAME: CI
+      OWNER_LAST_NAME: Owner
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Validate configuration and shell scripts
+        run: |
+          docker compose --env-file .env.example config --quiet
+          docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.dev.yml config --quiet
+          bash -n deploy/backup.sh deploy/restore.sh
+          sh -n apps/api/docker-entrypoint.sh deploy/postgres/init/01-create-app-role.sh
+      - run: docker compose --env-file .env.example build api caddy
+      - name: Smoke test migrations, seed, readiness and proxy
+        run: |
+          docker compose --env-file .env.example up -d --wait api caddy
+          docker compose --env-file .env.example --profile bootstrap run --rm seed
+          docker compose --env-file .env.example run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile
+          curl --fail --retry 5 --retry-delay 2 http://localhost/health/ready
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost/api)" = 404
+          curl --fail -I http://localhost/client-route | grep -i 'cache-control: no-cache'
+      - name: Exercise coherent database and uploads recovery
+        run: |
+          docker compose --env-file .env.example exec -T api sh -c 'printf "recovery fixture\n" > /data/documents/00000000-0000-4000-8000-000000000001'
+          bash deploy/backup.sh "$PWD/.env.example" "$RUNNER_TEMP/erp-backups" erp-ci
+          backup_dir=$(find "$RUNNER_TEMP/erp-backups" -mindepth 1 -maxdepth 1 -type d -print -quit)
+          bash deploy/restore.sh "$PWD/.env.example" erp-ci-restore "$backup_dir"
+          docker compose -p erp-ci-restore --env-file .env.example exec -T postgres sh -c 'test "$(psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT count(*) FROM users WHERE \"isOwner\"")" = 1'
+          docker compose -p erp-ci-restore --env-file .env.example run --rm --no-deps --entrypoint cat api /data/documents/00000000-0000-4000-8000-000000000001 | grep -Fx 'recovery fixture'
+      - name: Diagnostics
+        if: failure()
+        run: docker compose --env-file .env.example logs --tail 100 postgres migrate api caddy
+      - name: Clean up isolated CI volumes
+        if: always()
+        run: |
+          docker compose -p erp-ci --env-file .env.example down --volumes
+          docker compose -p erp-ci-restore --env-file .env.example down --volumes

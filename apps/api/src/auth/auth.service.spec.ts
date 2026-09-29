@@ -7,6 +7,9 @@ import type { PrismaService } from '../prisma/prisma.service.js';
 import type { PasswordService } from './password.service.js';
 import type { SessionService } from './session.service.js';
 import type { TokenService } from './token.service.js';
+import type { AuditService } from '../audit/audit.service.js';
+import type { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
+import type { AppConfigService } from '../config/app-config.service.js';
 
 function makeUser(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -32,6 +35,7 @@ function makeService(overrides?: {
       findUnique: vi.fn().mockResolvedValue(user),
       findUniqueOrThrow: vi.fn().mockResolvedValue(user),
       update: vi.fn().mockResolvedValue(user),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     // The callback form receives `prisma` itself as `tx` — fine for these
     // unit tests since the mock doesn't model real transactional isolation.
@@ -74,8 +78,40 @@ function makeService(overrides?: {
     }),
   } as unknown as TokenService;
 
+  const audit = {
+    log: vi.fn(),
+    logInTransaction: vi.fn(),
+  } as unknown as AuditService;
+
+  const effectivePermissions = {
+    getEffectiveAccess: vi.fn().mockResolvedValue({
+      roles: [{ id: 'role-1', name: 'Dev', color: '#112233', position: 1 }],
+      permissionKeys: new Set(['TASKS_CREATE', 'DASHBOARD_VIEW']),
+    }),
+    getAllPermissionKeys: vi
+      .fn()
+      .mockResolvedValue(new Set(['USERS_VIEW', 'AUDIT_VIEW', 'TASKS_CREATE'])),
+  } as unknown as EffectivePermissionsService;
+
+  const config = {
+    storage: {
+      maxUploadBytes: 1000,
+      allowedExtensions: new Set(['pdf', 'png']),
+    },
+  } as unknown as AppConfigService;
+
   return {
-    auth: new AuthService(prisma, password, sessions, tokens),
+    auth: new AuthService(
+      prisma,
+      password,
+      sessions,
+      tokens,
+      audit,
+      effectivePermissions,
+      config,
+    ),
+    effectivePermissions,
+    audit,
     prisma,
     password,
     sessions,
@@ -84,6 +120,14 @@ function makeService(overrides?: {
 }
 
 describe('AuthService.login', () => {
+  it('does not create a session if credentials or status changed during verification', async () => {
+    const { auth, prisma, sessions } = makeService();
+    vi.mocked(prisma.user.updateMany).mockResolvedValue({ count: 0 });
+    await expect(
+      auth.login('owner@example.com', 'old-password', {}),
+    ).rejects.toBeInstanceOf(InvalidCredentialsException);
+    expect(sessions.createSession).not.toHaveBeenCalled();
+  });
   it('throws a generic error when the user does not exist', async () => {
     const { auth } = makeService({ user: null });
     await expect(
@@ -138,17 +182,36 @@ describe('AuthService.login', () => {
     });
     expect(result.accessToken).toBe('access-token');
     expect(result.user.email).toBe('owner@example.com');
-    expect(sessions.createSession).toHaveBeenCalledWith('user-1', {
-      ip: '127.0.0.1',
-    });
-    expect(prisma.user.update).toHaveBeenCalledWith({
-      where: { id: 'user-1' },
+    expect(sessions.createSession).toHaveBeenCalledWith(
+      'user-1',
+      {
+        ip: '127.0.0.1',
+      },
+      prisma,
+    );
+    expect(prisma.user.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'user-1',
+        passwordHash: 'hashed',
+        status: 'ACTIVE',
+        email: 'owner@example.com',
+      },
       data: { lastLoginAt: expect.any(Date) },
     });
   });
 });
 
 describe('AuthService.refresh', () => {
+  it('does not burn a valid session because of an operational rotation failure', async () => {
+    const { auth, sessions } = makeService();
+    vi.mocked(sessions.rotateSession).mockRejectedValue(
+      new Error('database temporarily unavailable'),
+    );
+    await expect(auth.refresh('token')).rejects.toThrow(
+      /temporarily unavailable/,
+    );
+    expect(sessions.revokeSession).not.toHaveBeenCalled();
+  });
   it('rejects a token that fails signature verification', async () => {
     const { auth, tokens } = makeService();
     (tokens.verifyRefreshToken as ReturnType<typeof vi.fn>).mockRejectedValue(
@@ -197,6 +260,19 @@ describe('AuthService.refresh', () => {
 });
 
 describe('AuthService.changePassword', () => {
+  it('rejects a stale verified password instead of overwriting a concurrent change', async () => {
+    const { auth, prisma, sessions } = makeService();
+    vi.mocked(prisma.user.updateMany).mockResolvedValue({ count: 0 });
+    await expect(
+      auth.changePassword(
+        'user-1',
+        'session-1',
+        'old-password',
+        'new-password',
+      ),
+    ).rejects.toBeInstanceOf(InvalidCredentialsException);
+    expect(sessions.reissueTokens).not.toHaveBeenCalled();
+  });
   it('rejects an incorrect current password', async () => {
     const { auth } = makeService({ passwordVerifies: false });
     await expect(
@@ -212,8 +288,8 @@ describe('AuthService.changePassword', () => {
       'correct',
       'newpassword123',
     );
-    expect(prisma.user.update).toHaveBeenCalledWith({
-      where: { id: 'user-1' },
+    expect(prisma.user.updateMany).toHaveBeenCalledWith({
+      where: { id: 'user-1', passwordHash: 'hashed', status: 'ACTIVE' },
       data: { passwordHash: 'new-hash' },
     });
     // Both calls receive the transaction client as their third argument —
@@ -251,6 +327,72 @@ describe('AuthService.revokeOwnSession', () => {
     await expect(auth.revokeOwnSession('user-1', 'session-2')).resolves.toBe(
       true,
     );
-    expect(sessions.revokeSession).toHaveBeenCalledWith('session-2');
+    expect(sessions.revokeSession).toHaveBeenCalledWith(
+      'session-2',
+      expect.anything(),
+    );
+  });
+});
+
+describe('AuthService.me', () => {
+  it('returns the identity with roles, sorted effective permissions and upload capabilities', async () => {
+    const { auth } = makeService();
+    const me = await auth.me('user-1');
+    expect(me).toMatchObject({
+      id: 'user-1',
+      isOwner: false,
+      roles: [{ id: 'role-1', name: 'Dev', color: '#112233', position: 1 }],
+      permissions: ['DASHBOARD_VIEW', 'TASKS_CREATE'],
+      capabilities: {
+        uploads: { maxBytes: 1000, allowedExtensions: ['pdf', 'png'] },
+      },
+    });
+  });
+
+  it('never includes credentials or hashes', async () => {
+    const { auth } = makeService();
+    const me = await auth.me('user-1');
+    expect(JSON.stringify(me)).not.toContain('hashed');
+    expect(me).not.toHaveProperty('passwordHash');
+  });
+
+  it('gives the Owner the whole permission catalog without reading role grants for it', async () => {
+    const { auth, effectivePermissions } = makeService({
+      user: makeUser({ isOwner: true }),
+    });
+    const me = await auth.me('user-1');
+    expect(me.permissions).toEqual([
+      'AUDIT_VIEW',
+      'TASKS_CREATE',
+      'USERS_VIEW',
+    ]);
+    expect(effectivePermissions.getAllPermissionKeys).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not grant catalog permissions to a non-Owner', async () => {
+    const { auth, effectivePermissions } = makeService();
+    const me = await auth.me('user-1');
+    expect(me.permissions).not.toContain('USERS_VIEW');
+    expect(effectivePermissions.getAllPermissionKeys).not.toHaveBeenCalled();
+  });
+});
+
+describe('AuthService.login (current user view)', () => {
+  it('returns roles and permissions with the login response', async () => {
+    const { auth } = makeService();
+    const result = await auth.login('owner@example.com', 'pw', {});
+    expect(result.user.permissions).toEqual(['DASHBOARD_VIEW', 'TASKS_CREATE']);
+    expect(result.user.roles).toHaveLength(1);
+  });
+
+  it('does not create a session when the permission read fails', async () => {
+    const { auth, effectivePermissions, sessions } = makeService();
+    vi.mocked(effectivePermissions.getEffectiveAccess).mockRejectedValue(
+      new Error('db down'),
+    );
+    await expect(auth.login('owner@example.com', 'pw', {})).rejects.toThrow(
+      'db down',
+    );
+    expect(sessions.createSession).not.toHaveBeenCalled();
   });
 });

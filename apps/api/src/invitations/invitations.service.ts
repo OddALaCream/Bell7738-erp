@@ -177,15 +177,31 @@ export class InvitationsService {
       // Already accepted (or otherwise no longer pending) — nothing to resend.
       throw new ConflictException();
     }
+    const roles = await this.prisma.invitationRole.findMany({
+      where: { invitationId },
+      select: { roleId: true },
+    });
+    await this.effectivePermissions.assertRolesExistAndActorCanGrant(
+      roles.map((role) => role.roleId),
+      actor,
+    );
 
     const rawToken = generateRawToken();
     const expiresAt = new Date(
       Date.now() + this.config.auth.invitationTtlHours * 60 * 60 * 1000,
     );
     const updated = await this.prisma.$transaction(async (tx) => {
-      const result = await tx.invitation.update({
-        where: { id: invitationId },
+      const { count } = await tx.invitation.updateMany({
+        where: {
+          id: invitationId,
+          acceptedAt: null,
+          user: { status: 'INVITED' },
+        },
         data: { tokenHash: hashToken(rawToken), expiresAt, revokedAt: null },
+      });
+      if (count === 0) throw new ConflictException();
+      const result = await tx.invitation.findUniqueOrThrow({
+        where: { id: invitationId },
         select: INVITATION_SELECT,
       });
       await this.audit.logInTransaction(tx, {
@@ -220,10 +236,16 @@ export class InvitationsService {
     if (invitation.user.status !== 'INVITED' || invitation.revokedAt) return;
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.invitation.update({
-        where: { id: invitationId },
+      const { count } = await tx.invitation.updateMany({
+        where: {
+          id: invitationId,
+          acceptedAt: null,
+          revokedAt: null,
+          user: { status: 'INVITED' },
+        },
         data: { revokedAt: new Date() },
       });
+      if (count === 0) return;
       await this.audit.logInTransaction(tx, {
         actorId: actor.id,
         action: 'USER_INVITATION_REVOKED',

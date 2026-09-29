@@ -31,12 +31,12 @@ export class MyScheduleQueryDto {
 
   @IsOptional()
   @Matches(DATE_ONLY)
-  @IsDateString()
+  @IsDateString({ strict: true })
   from?: string;
 
   @IsOptional()
   @Matches(DATE_ONLY)
-  @IsDateString()
+  @IsDateString({ strict: true })
   to?: string;
 
   // Meetings have no status column; this filters the task side only.

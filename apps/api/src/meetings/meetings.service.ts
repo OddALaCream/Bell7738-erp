@@ -12,6 +12,8 @@ import { ActivityService } from '../activity/activity.service.js';
 import { paginate, type PaginatedResult } from '../common/pagination.js';
 import { toDateOrUndefined } from '../common/dates.js';
 import { MeetingNotesRevisionConflictException } from './meeting.exceptions.js';
+import { assertValidMeetingNotes } from './meeting-notes.js';
+import { recalculateMeetingReminders } from './meeting-reminders.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import type { CreateMeetingDto } from './dto/create-meeting.dto.js';
 import type { UpdateMeetingDto } from './dto/update-meeting.dto.js';
@@ -208,6 +210,11 @@ export class MeetingsService {
             addedById: actor.id,
           })),
         });
+        await recalculateMeetingReminders(
+          tx,
+          meeting.id,
+          new Date(dto.startsAt),
+        );
         return tx.meeting.findUniqueOrThrow({
           where: { id: meeting.id },
           select: MEETING_SELECT,
@@ -242,11 +249,7 @@ export class MeetingsService {
    * ser organizador, MANAGER u override." Only structure (title/description/
    * schedule) — notes and participants have their own dedicated endpoints.
    *
-   * docs/API.md notes "Un cambio significativo crea notificaciones y
-   * recalcula recordatorios" — Notifications and MeetingReminder scheduling
-   * are out of scope until their own dedicated phase builds the delivery
-   * mechanism; creating reminder rows with nothing to ever deliver them
-   * would be dead code.
+   * Schedule changes recalculate persistent reminders in the same transaction.
    */
   async update(
     projectId: string,
@@ -281,31 +284,35 @@ export class MeetingsService {
       (dto.endsAt !== undefined &&
         new Date(dto.endsAt).getTime() !== meeting.endsAt.getTime());
 
-    const { count } = await this.prisma.meeting.updateMany({
-      where: {
-        id: meetingId,
-        projectId,
-        deletedAt: null,
-        project: { deletedAt: null },
-      },
-      data: {
-        ...(dto.title !== undefined ? { title: dto.title } : {}),
-        ...(dto.description !== undefined
-          ? { description: dto.description }
-          : {}),
-        ...(dto.startsAt !== undefined
-          ? { startsAt: toDateOrUndefined(dto.startsAt) }
-          : {}),
-        ...(dto.endsAt !== undefined
-          ? { endsAt: toDateOrUndefined(dto.endsAt) }
-          : {}),
-      },
-    });
-    if (count === 0) throw new NotFoundException();
-
-    const updated = await this.prisma.meeting.findUniqueOrThrow({
-      where: { id: meetingId },
-      select: MEETING_SELECT,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "meetings" WHERE "id" = ${meetingId}::uuid FOR UPDATE`;
+      const { count } = await tx.meeting.updateMany({
+        where: {
+          id: meetingId,
+          projectId,
+          deletedAt: null,
+          project: { deletedAt: null },
+        },
+        data: {
+          ...(dto.title !== undefined ? { title: dto.title } : {}),
+          ...(dto.description !== undefined
+            ? { description: dto.description }
+            : {}),
+          ...(dto.startsAt !== undefined
+            ? { startsAt: toDateOrUndefined(dto.startsAt) }
+            : {}),
+          ...(dto.endsAt !== undefined
+            ? { endsAt: toDateOrUndefined(dto.endsAt) }
+            : {}),
+        },
+      });
+      if (count === 0) throw new NotFoundException();
+      const fresh = await tx.meeting.findUniqueOrThrow({
+        where: { id: meetingId },
+        select: MEETING_SELECT,
+      });
+      await recalculateMeetingReminders(tx, meetingId, fresh.startsAt);
+      return fresh;
     });
 
     if (isSignificantChange) {
@@ -385,6 +392,7 @@ export class MeetingsService {
     );
 
     const result = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "meetings" WHERE "id" = ${meetingId}::uuid FOR UPDATE`;
       const stillLive = await tx.meeting.findFirst({
         where: {
           id: meetingId,
@@ -414,6 +422,7 @@ export class MeetingsService {
         select: MEETING_SELECT,
       });
       if (!fresh) throw new NotFoundException();
+      await recalculateMeetingReminders(tx, meetingId, fresh.startsAt);
       return fresh;
     });
 
@@ -455,6 +464,7 @@ export class MeetingsService {
     const meeting = await this.getMeetingOrThrow(projectId, meetingId, actor);
     if (!(await this.canEditMeetingNotes(actor, meeting, projectId)))
       throw new ForbiddenException();
+    assertValidMeetingNotes(dto.notes);
 
     const { count } = await this.prisma.meeting.updateMany({
       where: {
@@ -526,16 +536,21 @@ export class MeetingsService {
       throw new ForbiddenException();
     }
 
-    const { count } = await this.prisma.meeting.updateMany({
-      where: {
-        id: meetingId,
-        projectId,
-        deletedAt: null,
-        project: { deletedAt: null },
-      },
-      data: { deletedAt: new Date(), deletedById: actor.id },
+    await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.meeting.updateMany({
+        where: {
+          id: meetingId,
+          projectId,
+          deletedAt: null,
+          project: { deletedAt: null },
+        },
+        data: { deletedAt: new Date(), deletedById: actor.id },
+      });
+      if (count === 0) throw new NotFoundException();
+      await tx.meetingReminder.deleteMany({
+        where: { meetingId, deliveredAt: null },
+      });
     });
-    if (count === 0) throw new NotFoundException();
 
     await this.activity.record({
       projectId,
@@ -581,13 +596,14 @@ export class MeetingsService {
     );
     if (!keys.has(permissionKey)) return false;
     if (keys.has('PROJECTS_VIEW_ALL')) return true;
-    if (meeting.organizerId === actor.id) return true;
-
     const membership = await this.access.getActiveMembership(
       actor.id,
       projectId,
     );
-    return membership?.role === 'MANAGER';
+    return (
+      membership?.role === 'MANAGER' ||
+      (membership?.role === 'MEMBER' && meeting.organizerId === actor.id)
+    );
   }
 
   private async canEditMeetingNotes(
@@ -602,18 +618,17 @@ export class MeetingsService {
     );
     if (!keys.has('MEETINGS_UPDATE')) return false;
     if (keys.has('PROJECTS_VIEW_ALL')) return true;
-    if (
-      meeting.participants.some(
-        (participant) => participant.userId === actor.id,
-      )
-    )
-      return true;
-
     const membership = await this.access.getActiveMembership(
       actor.id,
       projectId,
     );
-    return membership?.role === 'MANAGER';
+    return (
+      membership?.role === 'MANAGER' ||
+      (membership?.role === 'MEMBER' &&
+        meeting.participants.some(
+          (participant) => participant.userId === actor.id,
+        ))
+    );
   }
 
   private async getViewerCapabilities(

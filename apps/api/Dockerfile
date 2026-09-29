@@ -25,7 +25,7 @@ COPY packages/shared packages/shared
 COPY apps/api apps/api
 RUN pnpm --filter api exec prisma generate
 RUN pnpm --filter api run build
-RUN pnpm deploy --filter api --prod /prod/api
+RUN pnpm deploy --legacy --filter api --prod /prod/api
 
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
@@ -33,7 +33,7 @@ RUN addgroup -S app && adduser -S app -G app \
     && mkdir -p /data/documents && chown -R app:app /data/documents
 WORKDIR /app
 COPY --from=build /prod/api ./
-RUN chmod +x ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh && rm -f ./prisma/seed.ts
 USER app
 EXPOSE 3000
 ENTRYPOINT ["./docker-entrypoint.sh"]

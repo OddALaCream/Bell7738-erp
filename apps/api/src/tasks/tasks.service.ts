@@ -513,13 +513,14 @@ export class TasksService {
     );
     if (!keys.has('TASKS_UPDATE')) return false;
     if (keys.has('PROJECTS_VIEW_ALL')) return true;
-    if (task.createdById === actor.id) return true;
-
     const membership = await this.access.getActiveMembership(
       actor.id,
       projectId,
     );
-    return membership?.role === 'MANAGER';
+    return (
+      membership?.role === 'MANAGER' ||
+      (membership?.role === 'MEMBER' && task.createdById === actor.id)
+    );
   }
 
   private async canCompleteTask(
@@ -534,14 +535,15 @@ export class TasksService {
     );
     if (!keys.has('TASKS_COMPLETE')) return false;
     if (keys.has('PROJECTS_VIEW_ALL')) return true;
-    if (task.assignees.some((assignee) => assignee.userId === actor.id))
-      return true;
-
     const membership = await this.access.getActiveMembership(
       actor.id,
       projectId,
     );
-    return membership?.role === 'MANAGER';
+    return (
+      membership?.role === 'MANAGER' ||
+      (membership?.role === 'MEMBER' &&
+        task.assignees.some((assignee) => assignee.userId === actor.id))
+    );
   }
 
   /** docs/RBAC.md "Los nuevos asignados deben ser usuarios activos y miembros vigentes del mismo proyecto." */

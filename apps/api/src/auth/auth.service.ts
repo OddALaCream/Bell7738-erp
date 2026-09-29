@@ -13,6 +13,13 @@ import {
 } from './session.service.js';
 import { TokenService } from './token.service.js';
 import type { Session, User } from '../generated/prisma/client.js';
+import { AuditService } from '../audit/audit.service.js';
+import type { AuditContext } from '../audit/audit-context.decorator.js';
+import {
+  EffectivePermissionsService,
+  type RoleSummary,
+} from '../rbac/effective-permissions.service.js';
+import { AppConfigService } from '../config/app-config.service.js';
 
 export interface UserSummary {
   id: string;
@@ -22,6 +29,19 @@ export interface UserSummary {
   avatarStorageKey: string | null;
   isOwner: boolean;
   status: string;
+}
+
+/**
+ * docs/API.md /auth/me: identity plus what the UI needs to build navigation.
+ * `permissions` is a UX snapshot — the Owner gets the whole catalog because
+ * the Owner bypass is implicit — and never replaces backend authorization.
+ */
+export interface CurrentUserView extends UserSummary {
+  roles: RoleSummary[];
+  permissions: string[];
+  capabilities: {
+    uploads: { maxBytes: number; allowedExtensions: string[] };
+  };
 }
 
 function toUserSummary(user: User): UserSummary {
@@ -55,7 +75,31 @@ export class AuthService {
     private readonly password: PasswordService,
     private readonly sessions: SessionService,
     private readonly tokens: TokenService,
+    private readonly audit: AuditService,
+    private readonly effectivePermissions: EffectivePermissionsService,
+    private readonly config: AppConfigService,
   ) {}
+
+  private async toCurrentUserView(user: User): Promise<CurrentUserView> {
+    const [access, ownerKeys] = await Promise.all([
+      this.effectivePermissions.getEffectiveAccess(user.id),
+      user.isOwner
+        ? this.effectivePermissions.getAllPermissionKeys()
+        : Promise.resolve(null),
+    ]);
+    const { maxUploadBytes, allowedExtensions } = this.config.storage;
+    return {
+      ...toUserSummary(user),
+      roles: access.roles,
+      permissions: [...(ownerKeys ?? access.permissionKeys)].sort(),
+      capabilities: {
+        uploads: {
+          maxBytes: maxUploadBytes,
+          allowedExtensions: [...allowedExtensions].sort(),
+        },
+      },
+    };
+  }
 
   private getDummyHash(): Promise<string> {
     this.dummyHash ??= this.password.hash(
@@ -68,7 +112,8 @@ export class AuthService {
     email: string,
     plainPassword: string,
     metadata: RequestMetadata,
-  ): Promise<IssuedTokens & { user: UserSummary }> {
+    context?: AuditContext,
+  ): Promise<IssuedTokens & { user: CurrentUserView }> {
     const user = await this.prisma.user.findUnique({
       where: { email: normalizeEmail(email) },
     });
@@ -78,6 +123,11 @@ export class AuthService {
     if (!user || !user.passwordHash || user.status !== 'ACTIVE') {
       const hashToCheck = user?.passwordHash ?? (await this.getDummyHash());
       await this.password.verify(hashToCheck, plainPassword);
+      await this.audit.log({
+        actorId: null,
+        action: 'AUTH_LOGIN_FAILED',
+        context,
+      });
       throw new InvalidCredentialsException();
     }
 
@@ -86,20 +136,50 @@ export class AuthService {
       plainPassword,
     );
     if (!passwordMatches) {
+      await this.audit.log({
+        actorId: null,
+        action: 'AUTH_LOGIN_FAILED',
+        context,
+      });
       throw new InvalidCredentialsException();
     }
 
-    const issued = await this.sessions.createSession(user.id, metadata);
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date() },
+    // Read-only, so it runs before the session exists: a failure here must
+    // not leave a live session behind a 500 response.
+    const currentUser = await this.toCurrentUserView(user);
+
+    const issued = await this.prisma.$transaction(async (tx) => {
+      // A password/status/email change during Argon2 verification invalidates
+      // this login. The UPDATE also serializes session creation with revocation.
+      const { count } = await tx.user.updateMany({
+        where: {
+          id: user.id,
+          passwordHash: user.passwordHash,
+          status: 'ACTIVE',
+          email: user.email,
+        },
+        data: { lastLoginAt: new Date() },
+      });
+      if (count === 0) throw new InvalidCredentialsException();
+      const result = await this.sessions.createSession(user.id, metadata, tx);
+      await this.audit.logInTransaction(tx, {
+        actorId: user.id,
+        action: 'AUTH_LOGIN_SUCCEEDED',
+        entityType: 'Session',
+        entityId: result.sessionId,
+        context,
+      });
+      return result;
     });
 
     this.logger.log(`User ${user.id} logged in`);
-    return { ...issued, user: toUserSummary(user) };
+    return { ...issued, user: currentUser };
   }
 
-  async refresh(rawRefreshToken: string): Promise<IssuedTokens> {
+  async refresh(
+    rawRefreshToken: string,
+    context?: AuditContext,
+  ): Promise<IssuedTokens> {
     let payload;
     try {
       payload = await this.tokens.verifyRefreshToken(rawRefreshToken);
@@ -113,43 +193,84 @@ export class AuthService {
         payload.sub,
         rawRefreshToken,
       );
-    } catch {
+    } catch (error) {
+      if (
+        !(error instanceof SessionInvalidException) &&
+        !(error instanceof Error && error.message === 'REFRESH_ROTATION_FAILED')
+      )
+        throw error;
       // Whatever the exact reason (hash mismatch/replay, already revoked,
       // expired, or the user is no longer ACTIVE), revoking here is always
       // safe: it's a no-op if already revoked, and the right defensive
       // action if a validly-signed token's hash no longer matches.
       this.logger.warn(`Refresh rejected for session ${payload.sid}`);
       await this.sessions.revokeSession(payload.sid);
+      await this.audit.log({
+        actorId: payload.sub,
+        action: 'AUTH_REFRESH_REJECTED',
+        entityType: 'Session',
+        entityId: payload.sid,
+        context,
+      });
       throw new SessionInvalidException();
     }
   }
 
-  async logout(sessionId: string): Promise<void> {
-    await this.sessions.revokeSession(sessionId);
+  async logout(sessionId: string, context?: AuditContext): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await this.sessions.revokeSession(sessionId, tx);
+      await this.audit.logInTransaction(tx, {
+        actorId: null,
+        action: 'AUTH_LOGOUT',
+        entityType: 'Session',
+        entityId: sessionId,
+        context,
+      });
+    });
   }
 
-  async logoutAll(userId: string): Promise<void> {
+  async logoutAll(userId: string, context?: AuditContext): Promise<void> {
     // No exception for the current session: docs/API.md says logout-all
     // "no deja activa la sesión que ejecuta la operación".
-    await this.sessions.revokeAllSessionsForUser(userId);
+    await this.prisma.$transaction(async (tx) => {
+      await this.sessions.revokeAllSessionsForUser(userId, undefined, tx);
+      await this.audit.logInTransaction(tx, {
+        actorId: userId,
+        action: 'AUTH_LOGOUT_ALL',
+        context,
+      });
+    });
   }
 
   async listSessions(userId: string): Promise<Session[]> {
     return this.sessions.listSessionsForUser(userId);
   }
 
-  async revokeOwnSession(userId: string, sessionId: string): Promise<boolean> {
+  async revokeOwnSession(
+    userId: string,
+    sessionId: string,
+    context?: AuditContext,
+  ): Promise<boolean> {
     const session = await this.sessions.findOwnSession(userId, sessionId);
     if (!session) return false;
-    await this.sessions.revokeSession(sessionId);
+    await this.prisma.$transaction(async (tx) => {
+      await this.sessions.revokeSession(sessionId, tx);
+      await this.audit.logInTransaction(tx, {
+        actorId: userId,
+        action: 'AUTH_SESSION_REVOKED',
+        entityType: 'Session',
+        entityId: sessionId,
+        context,
+      });
+    });
     return true;
   }
 
-  async me(userId: string): Promise<UserSummary> {
+  async me(userId: string): Promise<CurrentUserView> {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
     });
-    return toUserSummary(user);
+    return this.toCurrentUserView(user);
   }
 
   async changePassword(
@@ -157,6 +278,7 @@ export class AuthService {
     currentSessionId: string,
     currentPassword: string,
     newPassword: string,
+    context?: AuditContext,
   ): Promise<IssuedTokens> {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
@@ -175,10 +297,15 @@ export class AuthService {
     // failure must never leave the password changed but other sessions
     // (potentially compromised credentials) still active.
     const result = await this.prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: userId },
+      const { count } = await tx.user.updateMany({
+        where: {
+          id: userId,
+          passwordHash: user.passwordHash,
+          status: 'ACTIVE',
+        },
         data: { passwordHash: newHash },
       });
+      if (count === 0) throw new InvalidCredentialsException();
       await this.sessions.revokeAllSessionsForUser(
         userId,
         currentSessionId,
@@ -186,7 +313,17 @@ export class AuthService {
       );
       // Rotating the current session's own refresh token too keeps its
       // credential fresh after a password change, per docs/API.md.
-      return this.sessions.reissueTokens(currentSessionId, userId, tx);
+      const issued = await this.sessions.reissueTokens(
+        currentSessionId,
+        userId,
+        tx,
+      );
+      await this.audit.logInTransaction(tx, {
+        actorId: userId,
+        action: 'AUTH_PASSWORD_CHANGED',
+        context,
+      });
+      return issued;
     });
 
     this.logger.log(`User ${userId} changed their password`);

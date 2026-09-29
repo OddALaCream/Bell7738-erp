@@ -42,7 +42,7 @@ Algunas acciones requieren además que el usuario sea creador, asignado, organiz
 
 ### General
 
-- `DASHBOARD_VIEW`: ver el dashboard propio.
+- `DASHBOARD_VIEW`: mostrar el dashboard como página de inicio. Es una preferencia de presentación: el dashboard se compone de lecturas que ya aplican su propio scope, así que este permiso no protege datos adicionales.
 
 ### Proyectos
 
@@ -245,7 +245,7 @@ Estas capacidades no permiten consultar recursos equivalentes de otra persona ca
 
 ## Frontend
 
-La API puede devolver permisos efectivos y membresía/rol del proyecto para que la UI construya navegación y estados. Esa información es una instantánea de UX y puede quedar obsoleta. El frontend debe manejar denegaciones backend sin revelar datos, mantener botones deshabilitados u ocultos de forma coherente y no interpretar colores o posiciones como permisos.
+`GET /auth/me` (y la respuesta de login) devuelve los roles y los permisos efectivos del actor (el Owner, el catálogo completo); los recursos de proyecto devuelven además el rol local y sus capacidades. La UI los usa para navegación, rutas de administración y botones, y vuelve a pedirlos al recuperar el foco de la pestaña. Esa información es una instantánea de UX y puede quedar obsoleta. El frontend debe manejar denegaciones backend sin revelar datos, mantener botones deshabilitados u ocultos de forma coherente y no interpretar colores o posiciones como permisos.
 
 ## Pruebas obligatorias futuras
 

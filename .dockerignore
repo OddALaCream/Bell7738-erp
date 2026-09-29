@@ -1,5 +1,6 @@
 **/node_modules
 **/dist
+**/dist-seed
 **/build
 **/coverage
 **/.turbo
@@ -15,3 +16,6 @@ docs
 !.env.example
 apps/api/uploads
 apps/api/src/generated
+backups
+*.dump
+*.tar.gz

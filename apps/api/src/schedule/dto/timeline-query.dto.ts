@@ -17,12 +17,12 @@ const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 export class TimelineQueryDto {
   @IsOptional()
   @Matches(DATE_ONLY)
-  @IsDateString()
+  @IsDateString({ strict: true })
   from?: string;
 
   @IsOptional()
   @Matches(DATE_ONLY)
-  @IsDateString()
+  @IsDateString({ strict: true })
   to?: string;
 
   @IsOptional()

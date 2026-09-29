@@ -124,6 +124,9 @@ describe('Notifications (e2e)', () => {
     await prisma.meetingParticipant.deleteMany({
       where: { meeting: { projectId: { in: createdProjectIds } } },
     });
+    await prisma.meetingReminder.deleteMany({
+      where: { meeting: { projectId: { in: createdProjectIds } } },
+    });
     await prisma.meeting.deleteMany({
       where: { projectId: { in: createdProjectIds } },
     });

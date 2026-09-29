@@ -67,7 +67,15 @@ function makeService(overrides?: {
 
   const tx = {
     $queryRaw: txProjectQueryRaw,
+    meetingReminder: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn(),
+    },
     meeting: {
+      updateMany: vi
+        .fn()
+        .mockResolvedValue({ count: overrides?.updateManyCount ?? 1 }),
       create: meetingCreate,
       findFirst: txMeetingFindFirst,
       findUniqueOrThrow: txMeetingFindUniqueOrThrow,
@@ -92,9 +100,7 @@ function makeService(overrides?: {
         .mockResolvedValue(
           overrides?.meeting !== undefined ? overrides.meeting : baseMeeting,
         ),
-      updateMany: vi
-        .fn()
-        .mockResolvedValue({ count: overrides?.updateManyCount ?? 1 }),
+      updateMany: tx.meeting.updateMany,
     },
     user: {
       findMany: vi
@@ -122,7 +128,9 @@ function makeService(overrides?: {
     getActiveMembership: vi
       .fn()
       .mockResolvedValue(
-        overrides?.membership !== undefined ? overrides.membership : null,
+        overrides?.membership !== undefined
+          ? overrides.membership
+          : { role: 'MEMBER' },
       ),
     canManageProject: vi.fn().mockResolvedValue(true),
     hasMemberLevelAccess: vi
@@ -252,6 +260,16 @@ describe('MeetingsService.create', () => {
 });
 
 describe('MeetingsService.update', () => {
+  it('denies an organizer demoted to VIEWER', async () => {
+    const { service } = makeService({
+      effectiveKeys: new Set(['MEETINGS_UPDATE']),
+      membership: { role: 'VIEWER' },
+      meeting: { ...baseMeeting, organizerId: actor.id },
+    });
+    await expect(
+      service.update('proj-1', 'meeting-1', { title: 'Changed' }, actor),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
   const dto = { title: 'Renamed' };
 
   it('rejects a non-organizer, non-manager actor without override', async () => {
@@ -359,9 +377,9 @@ describe('MeetingsService.update', () => {
   // (removing someone from a project doesn't cascade-remove old meeting
   // participation), so a former member must not keep getting notified.
   it('does not notify a participant who is no longer an active project member', async () => {
-    const { service, notifications } = makeService({
+    const { service, notifications, access } = makeService({
       effectiveKeys: new Set(['MEETINGS_UPDATE']),
-      membership: null,
+      membership: { role: 'MEMBER' },
       meeting: {
         ...baseMeeting,
         organizerId: actor.id,
@@ -370,6 +388,9 @@ describe('MeetingsService.update', () => {
         ],
       },
     });
+    vi.mocked(access.getActiveMembership).mockImplementation(async (userId) =>
+      userId === actor.id ? { role: 'MEMBER' } : null,
+    );
     await service.update('proj-1', 'meeting-1', { title: 'New title' }, actor);
     expect(notifications.notifyMeetingUpdated).not.toHaveBeenCalled();
   });
@@ -491,7 +512,62 @@ describe('MeetingsService.setParticipants', () => {
 });
 
 describe('MeetingsService.updateNotes', () => {
-  const dto = { notes: { text: 'hello' }, expectedRevision: 1 };
+  it('denies a participant demoted to VIEWER', async () => {
+    const { service } = makeService({
+      effectiveKeys: new Set(['MEETINGS_UPDATE']),
+      membership: { role: 'VIEWER' },
+      meeting: { ...baseMeeting, participants: [{ userId: actor.id }] },
+    });
+    await expect(
+      service.updateNotes(
+        'proj-1',
+        'meeting-1',
+        { notes: { type: 'doc' }, expectedRevision: 1 },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('rejects executable links before persisting notes', async () => {
+    const { service, prisma } = makeService();
+    await expect(
+      service.updateNotes(
+        'proj-1',
+        'meeting-1',
+        {
+          expectedRevision: 1,
+          notes: {
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: [
+                  {
+                    type: 'text',
+                    text: 'click',
+                    marks: [
+                      { type: 'link', attrs: { href: 'javascript:alert(1)' } },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        owner,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.meeting.updateMany).not.toHaveBeenCalled();
+  });
+  const dto = {
+    notes: {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'hello' }] },
+      ],
+    },
+    expectedRevision: 1,
+  };
 
   it('rejects a non-participant, non-manager actor without override', async () => {
     const { service } = makeService({

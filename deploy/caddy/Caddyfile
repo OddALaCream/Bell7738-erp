@@ -1,6 +1,10 @@
 {$APP_DOMAIN::80} {
 	encode gzip zstd
 
+	request_body {
+		max_size {$MAX_REQUEST_BYTES:27262976}
+	}
+
 	# docs/SECURITY.md "Headers y navegador". HSTS is only honored by browsers
 	# over an actual HTTPS connection, so it's harmless on the plain-HTTP
 	# local/dev fallback (APP_DOMAIN=:80) and takes effect automatically once
@@ -13,7 +17,7 @@
 		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 	}
 
-	@apiOrHealth path /api/* /health/*
+	@apiOrHealth path /api /api/* /health /health/*
 	handle @apiOrHealth {
 		reverse_proxy api:3000 {
 			health_uri /health/ready
@@ -25,8 +29,13 @@
 	handle {
 		root * /srv
 		header /assets/* Cache-Control "public, max-age=31536000, immutable"
-		header /index.html Cache-Control "no-cache"
-		try_files {path} /index.html
-		file_server
+		route {
+			try_files {path} /index.html
+			# The shell and the files that decide when a new version is installed must
+			# always be revalidated; only the hashed /assets/* are immutable.
+			@shell path /index.html /sw.js /manifest.webmanifest
+			header @shell Cache-Control "no-cache"
+			file_server
+		}
 	}
 }

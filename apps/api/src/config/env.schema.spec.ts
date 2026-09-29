@@ -11,6 +11,14 @@ const baseEnv = {
 };
 
 describe('validateEnv', () => {
+  it.each(['forever', '-1s', '0s', '1ms'])(
+    'rejects unusable token TTL %s at startup',
+    (ttl) => {
+      expect(() => validateEnv({ ...baseEnv, ACCESS_TOKEN_TTL: ttl })).toThrow(
+        /ACCESS_TOKEN_TTL/,
+      );
+    },
+  );
   it('accepts the minimal required set and applies defaults', () => {
     const env = validateEnv(baseEnv);
     expect(env.NODE_ENV).toBe('development');

@@ -11,7 +11,7 @@ Los endpoints de healthcheck son operativos y pueden vivir fuera del prefijo ver
 - JSON en `camelCase`.
 - IDs como UUID strings.
 - Instantes como ISO 8601 UTC, por ejemplo `2026-09-27T18:30:00Z`.
-- Fechas de calendario como `YYYY-MM-DD`.
+- Fechas de calendario como `YYYY-MM-DD` en los read models (`/timeline`, `/calendar`, `/me/schedule`, perfiles). Los recursos `Project` y `Task` serializan sus columnas `@db.Date` como instante `YYYY-MM-DDT00:00:00.000Z`; los clientes deben leer sólo los primeros 10 caracteres como día de calendario y nunca convertirlos con la zona horaria del usuario.
 - Content type normal: `application/json`.
 - Uploads: `multipart/form-data` con streaming.
 - Autenticación: `Authorization: Bearer <accessToken>`.
@@ -119,7 +119,7 @@ Público. Body: `email`, `password`. Si las credenciales y estado son válidos:
 
 - crea `Session`;
 - establece cookie refresh;
-- devuelve `accessToken`, `expiresIn` y resumen del usuario;
+- devuelve `accessToken`, `expiresIn` y el usuario actual con el mismo contenido que `GET /auth/me`;
 - actualiza `lastLoginAt`;
 - usa `Cache-Control: no-store`.
 
@@ -147,7 +147,29 @@ Revoca una sesión propia. Cambiar el UUID por el de otra persona responde `404`
 
 ### `GET /api/v1/auth/me`
 
-Devuelve identidad actual, permisos efectivos, roles globales y capacidades generales necesarias para construir UX. No reemplaza autorización backend.
+Devuelve la identidad actual y lo necesario para construir la UX. No reemplaza autorización backend.
+
+```json
+{
+  "data": {
+    "id": "uuid",
+    "email": "ana@example.com",
+    "firstName": "Ana",
+    "lastName": "Ruiz",
+    "avatarStorageKey": null,
+    "isOwner": false,
+    "status": "ACTIVE",
+    "roles": [{ "id": "uuid", "name": "Developer", "color": "#0ea5e9", "position": 2 }],
+    "permissions": ["DASHBOARD_VIEW", "TASKS_CREATE"],
+    "capabilities": { "uploads": { "maxBytes": 26214400, "allowedExtensions": ["pdf", "png"] } }
+  }
+}
+```
+
+- `permissions` es la unión de los permisos de los roles del usuario, en orden alfabético. El Owner recibe el catálogo completo porque su bypass es implícito.
+- `roles` son resúmenes de presentación; nunca incluyen la composición de permisos.
+- `capabilities.uploads` refleja `MAX_UPLOAD_BYTES` y `DOCUMENT_ALLOWED_EXTENSIONS` para que el cliente muestre los límites antes de enviar; el servidor sigue validando cada archivo.
+- Es una instantánea: se vuelve a calcular en cada llamada y puede quedar obsoleta. Cada petición se autoriza otra vez con datos actuales de PostgreSQL.
 
 ### `POST /api/v1/auth/change-password`
 
@@ -159,7 +181,7 @@ Autenticado. Body: `currentPassword`, `newPassword`. Reemplaza el hash, revoca l
 
 Requiere `USERS_CREATE`. Body: `email`, `firstName`, `lastName`, `roleIds`.
 
-Crea usuario `INVITED`, invitación y roles iniciales de forma transaccional. Si SMTP no está configurado, la respuesta incluye `manualLink` una única vez y usa `Cache-Control: no-store`. Nunca devuelve el hash.
+Crea usuario `INVITED`, invitación y roles iniciales de forma transaccional. Si SMTP no está configurado, la respuesta incluye `manualLink` una única vez y usa `Cache-Control: no-store`. Nunca devuelve el hash. El enlace es `{WEB_ORIGIN}/accept-invitation#token=…`: el token viaja en el fragmento para que no llegue a logs de acceso y el frontend lo envía en el cuerpo de `POST /invitations/accept`.
 
 ### `GET /api/v1/invitations`
 
@@ -181,7 +203,7 @@ Público. Body: `token`, `password`. Consume token, establece password, asigna r
 
 ### `GET /api/v1/users`
 
-Requiere `USERS_VIEW`. Filtros: `search`, `status`, `roleId`, paginación y orden por nombre, email o creación.
+Requiere `USERS_VIEW`. Filtros: `search`, `status`, `roleId`, paginación y orden por nombre, email o creación. Cada usuario incluye `roles` (resúmenes `{ id, name, color, position }`).
 
 ### `POST /api/v1/users`
 
@@ -189,7 +211,7 @@ Alias administrativo opcional para crear/invitar; si existe, debe ejecutar el mi
 
 ### `GET /api/v1/users/{userId}`
 
-Requiere `USERS_VIEW`. Devuelve datos administrativos, roles y estado; nunca `passwordHash` ni tokens.
+Requiere `USERS_VIEW`. Devuelve datos administrativos, `roles` y estado; nunca `passwordHash` ni tokens. Las respuestas de `PATCH`, suspender, reactivar, deshabilitar y `PUT .../roles` usan la misma forma.
 
 ### `PATCH /api/v1/users/{userId}`
 
@@ -213,7 +235,11 @@ Requiere `USERS_ROLES_MANAGE`. Body: conjunto completo `roleIds`. La API valida 
 
 ### `GET /api/v1/me/profile`
 
-Devuelve perfil propio, roles, proyectos activos/anteriores y tareas activas/terminadas dentro del scope.
+Devuelve el perfil propio (datos administrativos propios), `roles` y las listas `activeProjects`, `pastProjects`, `activeTasks` y `completedTasks`, restringidas a los proyectos que el propio usuario puede ver (mismo scope que `GET /projects`).
+
+- Proyecto: `{ id, name, status, role, startDate, expectedEndDate }`; `role` es el rol local de la persona. Son *activos* los `PLANNED`/`ACTIVE`/`PAUSED` con membresía vigente; el resto (cerrados o con membresía retirada) son *anteriores*.
+- Tarea: `{ id, projectId, projectName, title, startDate, dueDate, status, completedAt }`; sólo tareas asignadas a la persona. Las terminadas se ordenan por `completedAt` descendente.
+- Las listas están acotadas (200 membresías, 50 tareas activas, 20 terminadas) y no incluyen proyectos ni tareas dados de baja. Se resuelven con tres consultas, sin lecturas por proyecto.
 
 ### `PATCH /api/v1/me/profile`
 
@@ -225,11 +251,11 @@ Upload de imagen opcional con los mismos controles de tamaño, contenido y stora
 
 ### `GET /api/v1/users/{userId}/profile`
 
-Perfil interno visible a usuarios activos. Proyectos y tareas se filtran según lo que el actor pueda ver; no revela administración, email sensible adicional ni proyectos ajenos.
+Perfil interno visible a usuarios activos: `id`, `email`, nombre, avatar, `roles` y las mismas listas que `/me/profile`, calculadas para esa persona **pero filtradas por el scope de quien consulta**. Un observador sin acceso a un proyecto no recibe ni su nombre ni sus tareas. Un usuario no `ACTIVE` responde `404`. No incluye estado, `isOwner`, fechas administrativas ni proyectos ajenos.
 
 ### `GET /api/v1/team`
 
-Directorio interno de usuarios activos con avatar, nombre y badges de roles. Soporta búsqueda y paginación. No devuelve usuarios invitados o deshabilitados a usuarios normales.
+Directorio interno de usuarios activos con avatar, nombre y `roles` (resúmenes para badges, sin permisos). Soporta búsqueda y paginación. No devuelve usuarios invitados o deshabilitados a usuarios normales.
 
 ## Roles y permisos
 
@@ -413,7 +439,7 @@ Requiere `MEETINGS_DELETE`. Baja lógica, cancela recordatorios pendientes y not
 
 ### `GET /api/v1/projects/{projectId}/documents`
 
-Lista metadata con búsqueda, paginación y orden. Requiere visibilidad del proyecto.
+Lista metadata con búsqueda, paginación y orden. Requiere visibilidad del proyecto. Cada documento incluye `uploadedBy: { id, firstName, lastName }` (sólo nombre, también si la persona ya no es miembro).
 
 ### `POST /api/v1/projects/{projectId}/documents`
 
@@ -455,7 +481,11 @@ No hay endpoints para crear notificaciones arbitrarias desde el cliente.
 
 ### `GET /api/v1/projects/{projectId}/activity`
 
-Requiere visibilidad del proyecto. Filtros por tipo, actor, fecha y paginación descendente.
+Requiere visibilidad del proyecto. Filtros por tipo, actor, fecha y paginación descendente. Cada evento incluye `actor: { id, firstName, lastName } | null` y `project: { id, name }`.
+
+### `GET /api/v1/activity`
+
+Feed entre proyectos para el dashboard: los mismos eventos y filtros (`type`, `actorId`, `from`, `to`, `page`, `pageSize` ≤ 100), limitados en la consulta a los proyectos que el actor puede ver y excluyendo proyectos dados de baja. Un usuario sin visibilidad de proyectos recibe una lista vacía.
 
 ### `GET /api/v1/audit`
 
@@ -467,17 +497,17 @@ Requiere `AUDIT_VIEW`. No existen endpoints de update/delete.
 
 ## Dashboard
 
-### `GET /api/v1/dashboard`
+### Dashboard: sin endpoint dedicado
 
-Requiere `DASHBOARD_VIEW`. Devuelve secciones acotadas para el actor:
+V1 **no** define `GET /dashboard`. La pantalla inicial compone cinco lecturas acotadas sobre endpoints que ya aplican su scope en la consulta, cada una como bloque independiente (un fallo sólo afecta a su bloque):
 
-- tareas pendientes o en progreso;
-- próximas reuniones;
-- proyectos activos;
-- actividad reciente visible;
-- resumen de equipo.
+- tareas pendientes o en progreso: `GET /me/schedule?kind=task&status=…`;
+- próximas reuniones: `GET /me/schedule?kind=meeting&from=…&to=…`;
+- proyectos activos: `GET /projects?view=active`;
+- actividad reciente: `GET /activity?pageSize=8`;
+- equipo: `GET /team?pageSize=8`.
 
-No devuelve colecciones ilimitadas. Cada sección incluye un enlace/filtro para consultar el recurso completo.
+Un endpoint agregado sólo se justificaría si estas lecturas resultaran lentas o si "mis proyectos" tuviera que significar exclusivamente membresías. `DASHBOARD_VIEW` decide si la UI muestra el dashboard como página de inicio; no protege datos porque cada lectura tiene su propia autorización.
 
 ## Healthchecks
 
@@ -487,7 +517,7 @@ Confirma que el proceso responde. No consulta dependencias pesadas y no revela c
 
 ### `GET /health/ready`
 
-Comprueba al menos conexión a PostgreSQL y disponibilidad básica del storage persistente. SMTP y Web Push opcionales no bloquean readiness.
+Comprueba al menos conexión a PostgreSQL y disponibilidad básica del storage persistente. SMTP opcional no bloquea readiness.
 
 ## OpenAPI y Swagger
 

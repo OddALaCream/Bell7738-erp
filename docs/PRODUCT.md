@@ -24,7 +24,7 @@ La V1 será una aplicación web responsive e instalable como PWA. Debe funcionar
 - V1 sirve a una sola organización y no implementa multi-tenancy.
 - El sistema conserva el historial: deshabilitar o archivar tiene preferencia sobre borrar datos con referencias históricas.
 - Las vistas derivadas no duplican entidades. Calendarios, cronogramas y dashboard consultan tareas y reuniones existentes.
-- Las notificaciones internas son el canal principal. Email y Web Push son complementos opcionales.
+- Las notificaciones internas son el canal principal. El email es un complemento opcional; Web Push queda fuera de V1.
 - Las fechas de reuniones representan instantes; las fechas de proyectos y tareas son fechas de calendario. La UI muestra los instantes en la zona horaria del usuario.
 
 ## Actores
@@ -185,11 +185,11 @@ Casos mínimos:
 
 Los recordatorios se calculan mediante un scheduler de NestJS que consulta PostgreSQL. Deben sobrevivir reinicios y evitar duplicados; no dependen de timers exclusivamente en memoria. V1 ejecuta una sola instancia del backend y no introduce Redis o BullMQ.
 
-Web Push es una mejora progresiva si resulta razonable. Falta de soporte, suscripción o permiso nunca impide usar la aplicación ni las notificaciones internas.
+Web Push **no forma parte de V1**: no hay endpoints de suscripción ni entrega, y la interfaz no ofrece activarlo. Las notificaciones internas (campana e historial) y los recordatorios persistentes cubren el caso de uso. Si se retoma, será una mejora progresiva que nunca impida usar la aplicación.
 
 ### Dashboard y equipo
 
-El dashboard prioriza:
+El dashboard (sin endpoint dedicado: se compone de lecturas existentes, ver [API.md](./API.md)) prioriza:
 
 - Mis tareas;
 - próximas reuniones;

@@ -215,6 +215,12 @@ describe('Documents (e2e)', () => {
       expect(res.body.data.mimeType).toBe('application/pdf');
       expect(res.body.data.size).toBe(PDF_BYTES.length);
       expect(res.body.data.uploadedById).toBe(member.id);
+      expect(res.body.data.uploadedBy).toEqual({
+        id: member.id,
+        firstName: member.firstName,
+        lastName: member.lastName,
+      });
+      expect(res.body.data.uploadedBy).not.toHaveProperty('email');
       expect(res.body.data.checksumSha256).toMatch(/^[0-9a-f]{64}$/);
       expect(res.body.data).not.toHaveProperty('storageKey');
 
@@ -322,8 +328,9 @@ describe('Documents (e2e)', () => {
         .post(`/api/v1/projects/${project.id}/documents`)
         .set('Authorization', `Bearer ${accessToken}`)
         .field('extra', 'should not be accepted')
-        .attach('file', PDF_BYTES, 'Report.pdf');
-      expect(res.status).toBeGreaterThanOrEqual(400);
+        .attach('file', PDF_BYTES, 'Report.pdf')
+        .expect(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
 
       const count = await prisma.document.count({
         where: { projectId: project.id },

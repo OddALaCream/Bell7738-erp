@@ -28,11 +28,11 @@ export class UpdateTaskDto {
   description?: string | null;
 
   @ValidateIf((o) => o.startDate !== undefined)
-  @IsDateString()
+  @IsDateString({ strict: true })
   startDate?: string;
 
   @ValidateIf((o) => o.dueDate !== undefined)
-  @IsDateString()
+  @IsDateString({ strict: true })
   dueDate?: string;
 
   @ValidateIf((o) => o.status !== undefined)

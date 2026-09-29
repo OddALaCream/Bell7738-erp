@@ -9,6 +9,7 @@ import type { AppConfigService } from '../config/app-config.service.js';
 import type { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
 import type { ProjectAccessService } from './project-access.service.js';
 import type { ActivityService } from '../activity/activity.service.js';
+import type { AuditService } from '../audit/audit.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 
 const owner: AuthenticatedUser = {
@@ -50,6 +51,7 @@ function makeService(overrides?: {
     projectMember: { create: projectMemberCreate },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(tx)),
   } as unknown as PrismaService;
+  Object.assign(tx.project, { updateMany: prisma.project.updateMany });
 
   const config = {
     projects: { endingSoonDays: 7 },
@@ -83,6 +85,9 @@ function makeService(overrides?: {
   const activity = {
     record: vi.fn().mockResolvedValue(undefined),
   } as unknown as ActivityService;
+  const audit = {
+    logInTransaction: vi.fn().mockResolvedValue(undefined),
+  } as unknown as AuditService;
 
   return {
     service: new ProjectsService(
@@ -91,9 +96,11 @@ function makeService(overrides?: {
       effectivePermissions,
       access,
       activity,
+      audit,
     ),
     prisma,
     activity,
+    audit,
     access,
     effectivePermissions,
   };

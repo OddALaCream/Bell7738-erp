@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ProjectAccessService } from './project-access.service.js';
 import { ActivityService } from '../activity/activity.service.js';
+import { AuditService } from '../audit/audit.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import type { AddProjectMemberDto } from './dto/add-project-member.dto.js';
@@ -37,6 +38,7 @@ export class ProjectMembersService {
     private readonly prisma: PrismaService,
     private readonly access: ProjectAccessService,
     private readonly activity: ActivityService,
+    private readonly audit: AuditService,
   ) {}
 
   async list(projectId: string, actor: AuthenticatedUser) {
@@ -87,6 +89,13 @@ export class ProjectMembersService {
         // ProjectMember's PK is (projectId, userId) — a previously removed
         // membership is the same row, so rejoining is an UPDATE, not an
         // INSERT (see docs/DATABASE.md: history stays on the one row).
+        await this.audit.logInTransaction(tx, {
+          actorId: actor.id,
+          action: 'PROJECT_MEMBER_ADDED',
+          entityType: 'ProjectMember',
+          entityId: dto.userId,
+          metadata: { projectId, role: dto.role },
+        });
         if (existing) {
           return tx.projectMember.update({
             where: { projectId_userId: { projectId, userId: dto.userId } },
@@ -152,6 +161,13 @@ export class ProjectMembersService {
           await this.assertNotLastManager(tx, projectId, userId);
         }
 
+        await this.audit.logInTransaction(tx, {
+          actorId: actor.id,
+          action: 'PROJECT_MEMBER_ROLE_CHANGED',
+          entityType: 'ProjectMember',
+          entityId: userId,
+          metadata: { projectId, role: dto.role },
+        });
         return tx.projectMember.update({
           where: { projectId_userId: { projectId, userId } },
           data: { role: dto.role },
@@ -203,6 +219,13 @@ export class ProjectMembersService {
         where: { projectId_userId: { projectId, userId } },
         data: { removedAt: new Date() },
       });
+      await this.audit.logInTransaction(tx, {
+        actorId: actor.id,
+        action: 'PROJECT_MEMBER_REMOVED',
+        entityType: 'ProjectMember',
+        entityId: userId,
+        metadata: { projectId },
+      });
     });
 
     await this.activity.record({
@@ -246,7 +269,8 @@ export class ProjectMembersService {
       FOR UPDATE
     `;
     const otherActiveManagers = managers.filter(
-      (manager) => manager.userId !== excludingUserId,
+      (manager) =>
+        manager.userId.toLowerCase() !== excludingUserId.toLowerCase(),
     ).length;
     if (otherActiveManagers === 0) {
       throw new ConflictException(

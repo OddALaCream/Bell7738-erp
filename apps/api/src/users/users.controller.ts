@@ -106,13 +106,16 @@ export class UsersController {
   }
 
   @Get('users/:userId/profile')
-  getUserProfile(@Param('userId', ParseUUIDPipe) userId: string) {
-    return this.users.getPublicProfile(userId);
+  getUserProfile(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.users.getPublicProfile(userId, actor);
   }
 
   @Get('me/profile')
   getOwnProfile(@CurrentUser() user: AuthenticatedUser) {
-    return this.users.getOwnProfile(user.id);
+    return this.users.getOwnProfile(user);
   }
 
   @Patch('me/profile')

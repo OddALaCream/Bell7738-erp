@@ -7,9 +7,10 @@ import { SessionService } from './session.service.js';
 import { TokenService } from './token.service.js';
 import { SessionAuthGuard } from './guards/session-auth.guard.js';
 import { AuditWriterModule } from '../audit/audit-writer.module.js';
+import { PermissionsModule } from '../rbac/permissions.module.js';
 
 @Module({
-  imports: [JwtModule.register({}), AuditWriterModule],
+  imports: [JwtModule.register({}), AuditWriterModule, PermissionsModule],
   controllers: [AuthController],
   providers: [
     AuthService,

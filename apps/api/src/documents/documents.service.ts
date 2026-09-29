@@ -33,6 +33,7 @@ const DOCUMENT_SELECT = {
   size: true,
   checksumSha256: true,
   uploadedById: true,
+  uploadedBy: { select: { id: true, firstName: true, lastName: true } },
   createdAt: true,
 } as const;
 

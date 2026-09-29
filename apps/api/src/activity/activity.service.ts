@@ -16,6 +16,10 @@ const ACTIVITY_SELECT = {
   entityId: true,
   metadata: true,
   createdAt: true,
+  // Readable feeds need who and where without one extra request per event.
+  // Names only — no email or admin fields of the actor.
+  actor: { select: { id: true, firstName: true, lastName: true } },
+  project: { select: { id: true, name: true } },
 } as const;
 
 export interface RecordActivityInput {
@@ -43,9 +47,29 @@ export class ActivityService {
     actor: AuthenticatedUser,
   ): Promise<PaginatedResult<unknown>> {
     await this.access.assertCanViewProject(actor, projectId);
+    return this.page({ projectId, ...this.filters(query) }, query);
+  }
 
-    const where: Prisma.ActivityEventWhereInput = {
-      projectId,
+  /**
+   * Cross-project feed for the dashboard: the same events, limited in the
+   * query to the projects the actor can see (docs/RBAC.md "Actividad").
+   */
+  async listFeed(
+    query: ListActivityDto,
+    actor: AuthenticatedUser,
+  ): Promise<PaginatedResult<unknown>> {
+    const scope = await this.access.buildProjectScope(actor);
+    if (scope === null) {
+      return paginate([], 0, query.page, query.pageSize);
+    }
+    return this.page(
+      { project: { deletedAt: null, ...scope }, ...this.filters(query) },
+      query,
+    );
+  }
+
+  private filters(query: ListActivityDto): Prisma.ActivityEventWhereInput {
+    return {
       ...(query.type ? { type: query.type } : {}),
       ...(query.actorId ? { actorId: query.actorId } : {}),
       ...(query.from || query.to
@@ -57,7 +81,12 @@ export class ActivityService {
           }
         : {}),
     };
+  }
 
+  private async page(
+    where: Prisma.ActivityEventWhereInput,
+    query: ListActivityDto,
+  ): Promise<PaginatedResult<unknown>> {
     const [data, total] = await Promise.all([
       this.prisma.activityEvent.findMany({
         where,

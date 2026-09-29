@@ -233,3 +233,33 @@ describe('ProjectAccessService.hasMemberLevelAccess', () => {
     ).resolves.toBe(false);
   });
 });
+
+describe('ProjectAccessService.buildProjectScope', () => {
+  it('is unrestricted for the Owner', async () => {
+    const { service } = makeService();
+    await expect(service.buildProjectScope(owner)).resolves.toEqual({});
+  });
+
+  it('is unrestricted for PROJECTS_VIEW_ALL', async () => {
+    const { service } = makeService({
+      effectiveKeys: new Set(['PROJECTS_VIEW_ALL']),
+    });
+    await expect(service.buildProjectScope(member)).resolves.toEqual({});
+  });
+
+  it('limits PROJECTS_VIEW_ASSIGNED to the actor’s active memberships', async () => {
+    const { service } = makeService({
+      effectiveKeys: new Set(['PROJECTS_VIEW_ASSIGNED']),
+    });
+    await expect(service.buildProjectScope(member)).resolves.toEqual({
+      members: { some: { userId: 'member-1', removedAt: null } },
+    });
+  });
+
+  it('is null (sees nothing) without any project view permission', async () => {
+    const { service } = makeService({
+      effectiveKeys: new Set(['PROJECTS_CREATE', 'TASKS_CREATE']),
+    });
+    await expect(service.buildProjectScope(member)).resolves.toBeNull();
+  });
+});

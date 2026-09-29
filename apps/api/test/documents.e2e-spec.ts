@@ -215,6 +215,12 @@ describe('Documents (e2e)', () => {
       expect(res.body.data.mimeType).toBe('application/pdf');
       expect(res.body.data.size).toBe(PDF_BYTES.length);
       expect(res.body.data.uploadedById).toBe(member.id);
+      expect(res.body.data.uploadedBy).toEqual({
+        id: member.id,
+        firstName: member.firstName,
+        lastName: member.lastName,
+      });
+      expect(res.body.data.uploadedBy).not.toHaveProperty('email');
       expect(res.body.data.checksumSha256).toMatch(/^[0-9a-f]{64}$/);
       expect(res.body.data).not.toHaveProperty('storageKey');
 

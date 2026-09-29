@@ -15,6 +15,11 @@ import { TokenService } from './token.service.js';
 import type { Session, User } from '../generated/prisma/client.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { AuditContext } from '../audit/audit-context.decorator.js';
+import {
+  EffectivePermissionsService,
+  type RoleSummary,
+} from '../rbac/effective-permissions.service.js';
+import { AppConfigService } from '../config/app-config.service.js';
 
 export interface UserSummary {
   id: string;
@@ -24,6 +29,19 @@ export interface UserSummary {
   avatarStorageKey: string | null;
   isOwner: boolean;
   status: string;
+}
+
+/**
+ * docs/API.md /auth/me: identity plus what the UI needs to build navigation.
+ * `permissions` is a UX snapshot — the Owner gets the whole catalog because
+ * the Owner bypass is implicit — and never replaces backend authorization.
+ */
+export interface CurrentUserView extends UserSummary {
+  roles: RoleSummary[];
+  permissions: string[];
+  capabilities: {
+    uploads: { maxBytes: number; allowedExtensions: string[] };
+  };
 }
 
 function toUserSummary(user: User): UserSummary {
@@ -58,7 +76,30 @@ export class AuthService {
     private readonly sessions: SessionService,
     private readonly tokens: TokenService,
     private readonly audit: AuditService,
+    private readonly effectivePermissions: EffectivePermissionsService,
+    private readonly config: AppConfigService,
   ) {}
+
+  private async toCurrentUserView(user: User): Promise<CurrentUserView> {
+    const [access, ownerKeys] = await Promise.all([
+      this.effectivePermissions.getEffectiveAccess(user.id),
+      user.isOwner
+        ? this.effectivePermissions.getAllPermissionKeys()
+        : Promise.resolve(null),
+    ]);
+    const { maxUploadBytes, allowedExtensions } = this.config.storage;
+    return {
+      ...toUserSummary(user),
+      roles: access.roles,
+      permissions: [...(ownerKeys ?? access.permissionKeys)].sort(),
+      capabilities: {
+        uploads: {
+          maxBytes: maxUploadBytes,
+          allowedExtensions: [...allowedExtensions].sort(),
+        },
+      },
+    };
+  }
 
   private getDummyHash(): Promise<string> {
     this.dummyHash ??= this.password.hash(
@@ -72,7 +113,7 @@ export class AuthService {
     plainPassword: string,
     metadata: RequestMetadata,
     context?: AuditContext,
-  ): Promise<IssuedTokens & { user: UserSummary }> {
+  ): Promise<IssuedTokens & { user: CurrentUserView }> {
     const user = await this.prisma.user.findUnique({
       where: { email: normalizeEmail(email) },
     });
@@ -103,6 +144,10 @@ export class AuthService {
       throw new InvalidCredentialsException();
     }
 
+    // Read-only, so it runs before the session exists: a failure here must
+    // not leave a live session behind a 500 response.
+    const currentUser = await this.toCurrentUserView(user);
+
     const issued = await this.prisma.$transaction(async (tx) => {
       // A password/status/email change during Argon2 verification invalidates
       // this login. The UPDATE also serializes session creation with revocation.
@@ -128,7 +173,7 @@ export class AuthService {
     });
 
     this.logger.log(`User ${user.id} logged in`);
-    return { ...issued, user: toUserSummary(user) };
+    return { ...issued, user: currentUser };
   }
 
   async refresh(
@@ -221,11 +266,11 @@ export class AuthService {
     return true;
   }
 
-  async me(userId: string): Promise<UserSummary> {
+  async me(userId: string): Promise<CurrentUserView> {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
     });
-    return toUserSummary(user);
+    return this.toCurrentUserView(user);
   }
 
   async changePassword(

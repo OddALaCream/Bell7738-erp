@@ -8,6 +8,8 @@ import type { PasswordService } from './password.service.js';
 import type { SessionService } from './session.service.js';
 import type { TokenService } from './token.service.js';
 import type { AuditService } from '../audit/audit.service.js';
+import type { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
+import type { AppConfigService } from '../config/app-config.service.js';
 
 function makeUser(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -80,8 +82,35 @@ function makeService(overrides?: {
     log: vi.fn(),
     logInTransaction: vi.fn(),
   } as unknown as AuditService;
+
+  const effectivePermissions = {
+    getEffectiveAccess: vi.fn().mockResolvedValue({
+      roles: [{ id: 'role-1', name: 'Dev', color: '#112233', position: 1 }],
+      permissionKeys: new Set(['TASKS_CREATE', 'DASHBOARD_VIEW']),
+    }),
+    getAllPermissionKeys: vi
+      .fn()
+      .mockResolvedValue(new Set(['USERS_VIEW', 'AUDIT_VIEW', 'TASKS_CREATE'])),
+  } as unknown as EffectivePermissionsService;
+
+  const config = {
+    storage: {
+      maxUploadBytes: 1000,
+      allowedExtensions: new Set(['pdf', 'png']),
+    },
+  } as unknown as AppConfigService;
+
   return {
-    auth: new AuthService(prisma, password, sessions, tokens, audit),
+    auth: new AuthService(
+      prisma,
+      password,
+      sessions,
+      tokens,
+      audit,
+      effectivePermissions,
+      config,
+    ),
+    effectivePermissions,
     audit,
     prisma,
     password,
@@ -302,5 +331,68 @@ describe('AuthService.revokeOwnSession', () => {
       'session-2',
       expect.anything(),
     );
+  });
+});
+
+describe('AuthService.me', () => {
+  it('returns the identity with roles, sorted effective permissions and upload capabilities', async () => {
+    const { auth } = makeService();
+    const me = await auth.me('user-1');
+    expect(me).toMatchObject({
+      id: 'user-1',
+      isOwner: false,
+      roles: [{ id: 'role-1', name: 'Dev', color: '#112233', position: 1 }],
+      permissions: ['DASHBOARD_VIEW', 'TASKS_CREATE'],
+      capabilities: {
+        uploads: { maxBytes: 1000, allowedExtensions: ['pdf', 'png'] },
+      },
+    });
+  });
+
+  it('never includes credentials or hashes', async () => {
+    const { auth } = makeService();
+    const me = await auth.me('user-1');
+    expect(JSON.stringify(me)).not.toContain('hashed');
+    expect(me).not.toHaveProperty('passwordHash');
+  });
+
+  it('gives the Owner the whole permission catalog without reading role grants for it', async () => {
+    const { auth, effectivePermissions } = makeService({
+      user: makeUser({ isOwner: true }),
+    });
+    const me = await auth.me('user-1');
+    expect(me.permissions).toEqual([
+      'AUDIT_VIEW',
+      'TASKS_CREATE',
+      'USERS_VIEW',
+    ]);
+    expect(effectivePermissions.getAllPermissionKeys).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not grant catalog permissions to a non-Owner', async () => {
+    const { auth, effectivePermissions } = makeService();
+    const me = await auth.me('user-1');
+    expect(me.permissions).not.toContain('USERS_VIEW');
+    expect(effectivePermissions.getAllPermissionKeys).not.toHaveBeenCalled();
+  });
+});
+
+describe('AuthService.login (current user view)', () => {
+  it('returns roles and permissions with the login response', async () => {
+    const { auth } = makeService();
+    const result = await auth.login('owner@example.com', 'pw', {});
+    expect(result.user.permissions).toEqual(['DASHBOARD_VIEW', 'TASKS_CREATE']);
+    expect(result.user.roles).toHaveLength(1);
+  });
+
+  it('does not create a session when the permission read fails', async () => {
+    const { auth, effectivePermissions, sessions } = makeService();
+    vi.mocked(effectivePermissions.getEffectiveAccess).mockRejectedValue(
+      new Error('db down'),
+    );
+    await expect(auth.login('owner@example.com', 'pw', {})).rejects.toThrow(
+      'db down',
+    );
+    expect(sessions.createSession).not.toHaveBeenCalled();
   });
 });

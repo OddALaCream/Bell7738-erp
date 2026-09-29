@@ -6,6 +6,22 @@ import {
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 
+export interface RoleSummary {
+  id: string;
+  name: string;
+  color: string;
+  position: number;
+}
+
+/** Same presentation order as GET /roles: position, then name, then id. */
+export function compareRoles(a: RoleSummary, b: RoleSummary): number {
+  return (
+    a.position - b.position ||
+    a.name.localeCompare(b.name) ||
+    a.id.localeCompare(b.id)
+  );
+}
+
 /**
  * docs/RBAC.md: "Los permisos efectivos de un usuario son la unión de sus
  * roles." Owner bypass lives in PermissionsGuard, not here — this only
@@ -36,6 +52,53 @@ export class EffectivePermissionsService {
       }
     }
     return keys;
+  }
+
+  /**
+   * Roles and the permission keys they grant, in one query — what /auth/me
+   * exposes so the UI can build navigation. Presentation-only: every request
+   * is still authorized from PostgreSQL by the guards.
+   */
+  async getEffectiveAccess(userId: string): Promise<{
+    roles: RoleSummary[];
+    permissionKeys: Set<string>;
+  }> {
+    const userRoles = await this.prisma.userRole.findMany({
+      where: { userId },
+      select: {
+        role: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            position: true,
+            rolePermissions: {
+              select: { permission: { select: { key: true } } },
+            },
+          },
+        },
+      },
+    });
+
+    const permissionKeys = new Set<string>();
+    const roles: RoleSummary[] = [];
+    for (const { role } of userRoles) {
+      const { rolePermissions, ...summary } = role;
+      roles.push(summary);
+      for (const rolePermission of rolePermissions) {
+        permissionKeys.add(rolePermission.permission.key);
+      }
+    }
+    roles.sort(compareRoles);
+    return { roles, permissionKeys };
+  }
+
+  /** The Owner's effective set is implicitly the whole catalog (see class doc). */
+  async getAllPermissionKeys(): Promise<Set<string>> {
+    const permissions = await this.prisma.permission.findMany({
+      select: { key: true },
+    });
+    return new Set(permissions.map((permission) => permission.key));
   }
 
   /**

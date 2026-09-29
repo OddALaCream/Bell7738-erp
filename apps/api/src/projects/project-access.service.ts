@@ -2,7 +2,11 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { EffectivePermissionsService } from '../rbac/effective-permissions.service.js';
 import type { AuthenticatedUser } from '../auth/types.js';
-import type { Project, ProjectMemberRole } from '../generated/prisma/client.js';
+import type {
+  Prisma,
+  Project,
+  ProjectMemberRole,
+} from '../generated/prisma/client.js';
 
 export interface ProjectViewerCapabilities {
   role: ProjectMemberRole | null;
@@ -48,6 +52,26 @@ export class ProjectAccessService {
     if (!keys.has('PROJECTS_VIEW_ASSIGNED')) return false;
 
     return (await this.getActiveMembership(actor.id, projectId)) !== null;
+  }
+
+  /**
+   * The same visibility rule as canViewProject, expressed as a `where` so
+   * lists and read models filter in the query (docs/RBAC.md: no fetching
+   * everything to filter in memory). `null` means "sees no project at all".
+   */
+  async buildProjectScope(
+    actor: AuthenticatedUser,
+  ): Promise<Prisma.ProjectWhereInput | null> {
+    if (actor.isOwner) return {};
+
+    const keys = await this.effectivePermissions.getEffectivePermissionKeys(
+      actor.id,
+    );
+    if (keys.has('PROJECTS_VIEW_ALL')) return {};
+    if (keys.has('PROJECTS_VIEW_ASSIGNED')) {
+      return { members: { some: { userId: actor.id, removedAt: null } } };
+    }
+    return null;
   }
 
   /**

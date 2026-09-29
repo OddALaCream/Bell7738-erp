@@ -35,18 +35,41 @@ function Badge({ className, variant, asChild = false, ...props }: BadgeProps) {
 
 export { Badge, badgeVariants };
 
+function channelLuminance(value: number): number {
+  const c = value / 255;
+  return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+
+/** WCAG relative luminance of an sRGB color. */
+function relativeLuminance(r: number, g: number, b: number): number {
+  return 0.2126 * channelLuminance(r) + 0.7152 * channelLuminance(g) + 0.0722 * channelLuminance(b);
+}
+
+const DARK_TEXT = '#111111';
+const DARK_TEXT_LUMINANCE = relativeLuminance(17, 17, 17);
+
+/** Whichever of white or near-black text reads better on the given background (WCAG contrast ratio). */
+export function readableTextColor(hex: string): string {
+  const normalized = /^#?[0-9a-fA-F]{6}$/.test(hex) ? hex.replace('#', '') : '6b7280';
+  const luminance = relativeLuminance(
+    parseInt(normalized.slice(0, 2), 16),
+    parseInt(normalized.slice(2, 4), 16),
+    parseInt(normalized.slice(4, 6), 16),
+  );
+  const withWhite = 1.05 / (luminance + 0.05);
+  const withDark = (luminance + 0.05) / (DARK_TEXT_LUMINANCE + 0.05);
+  return withWhite >= withDark ? '#ffffff' : DARK_TEXT;
+}
+
 /**
  * Role badge: color is presentation only (docs/PRODUCT.md — "no es una
- * fuente implícita de autoridad"). Renders the stored hex as a tinted
- * background while computing a readable foreground from its luminance.
+ * fuente implícita de autoridad"). Renders the stored hex as the background
+ * and picks the text color with the higher contrast, so any admin-chosen
+ * color stays as legible as it can be.
  */
 export function RoleBadge({ name, color }: { name: string; color: string }) {
   const normalized = /^#?[0-9a-fA-F]{6}$/.test(color) ? color.replace('#', '') : '6b7280';
-  const r = parseInt(normalized.slice(0, 2), 16);
-  const g = parseInt(normalized.slice(2, 4), 16);
-  const b = parseInt(normalized.slice(4, 6), 16);
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  const textColor = luminance > 0.6 ? '#111111' : '#ffffff';
+  const textColor = readableTextColor(normalized);
   return (
     <span
       className="inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-medium"

@@ -1,6 +1,20 @@
 import type { AuditAction } from './api';
 
 export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
+  AUTH_LOGIN_SUCCEEDED: 'Inicio de sesión',
+  AUTH_LOGIN_FAILED: 'Inicio de sesión fallido',
+  AUTH_REFRESH_REJECTED: 'Renovación de sesión rechazada',
+  AUTH_LOGOUT: 'Cierre de sesión',
+  AUTH_LOGOUT_ALL: 'Cierre de todas las sesiones',
+  AUTH_SESSION_REVOKED: 'Sesión revocada',
+  AUTH_PASSWORD_CHANGED: 'Contraseña cambiada',
+  PROJECT_CREATED: 'Proyecto creado',
+  PROJECT_DELETED: 'Proyecto eliminado',
+  PROJECT_MEMBER_ADDED: 'Miembro añadido a un proyecto',
+  PROJECT_MEMBER_ROLE_CHANGED: 'Rol de miembro cambiado',
+  PROJECT_MEMBER_REMOVED: 'Miembro retirado de un proyecto',
+  DOCUMENT_UPLOADED: 'Documento subido',
+  DOCUMENT_DELETED: 'Documento eliminado',
   USER_INVITED: 'Usuario invitado',
   USER_INVITATION_RESENT: 'Invitación reenviada',
   USER_INVITATION_REVOKED: 'Invitación revocada',

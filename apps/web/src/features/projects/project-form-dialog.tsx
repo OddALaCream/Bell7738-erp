@@ -25,6 +25,8 @@ import { ApiError } from '@/lib/api-types';
 import { useCreateProject, useUpdateProject } from './hooks';
 import type { ProjectStatus, ProjectSummary } from '@/types/domain';
 
+import { PROJECT_STATUS_LABEL } from './labels';
+
 const STATUSES: ProjectStatus[] = ['PLANNED', 'ACTIVE', 'PAUSED', 'COMPLETED', 'CANCELLED'];
 
 const schema = z
@@ -158,7 +160,7 @@ function ProjectForm({ project, onOpenChange }: { project?: ProjectSummary; onOp
             <SelectContent>
               {STATUSES.map((s) => (
                 <SelectItem key={s} value={s}>
-                  {s}
+                  {PROJECT_STATUS_LABEL[s]}
                 </SelectItem>
               ))}
             </SelectContent>

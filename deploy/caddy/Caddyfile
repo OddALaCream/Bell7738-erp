@@ -31,8 +31,10 @@
 		header /assets/* Cache-Control "public, max-age=31536000, immutable"
 		route {
 			try_files {path} /index.html
-			@index path /index.html
-			header @index Cache-Control "no-cache"
+			# The shell and the files that decide when a new version is installed must
+			# always be revalidated; only the hashed /assets/* are immutable.
+			@shell path /index.html /sw.js /manifest.webmanifest
+			header @shell Cache-Control "no-cache"
 			file_server
 		}
 	}

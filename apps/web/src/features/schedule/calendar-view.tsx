@@ -66,6 +66,14 @@ function toVisibleRange(arg: DatesSetArg): VisibleRange {
  * Stays mounted while data loads: unmounting it would reset the visible
  * month back to today every time the user navigates.
  */
+function hideDecorativeIcons(arg: { el: HTMLElement }) {
+  const root = arg.el.closest('.fc') ?? document;
+  root.querySelectorAll('.fc-icon').forEach((icon) => {
+    icon.removeAttribute('role');
+    icon.setAttribute('aria-hidden', 'true');
+  });
+}
+
 export function CalendarView({
   items,
   loading = false,
@@ -119,6 +127,13 @@ export function CalendarView({
         eventContent={renderEventContent}
         eventClick={handleEventClick}
         datesSet={(arg) => onRangeChange(toVisibleRange(arg))}
+        // FullCalendar marks its toolbar chevrons role=img with no name and gives "+n más" links
+        // an empty aria-controls; tidy both so assistive tech isn't handed broken semantics.
+        viewDidMount={hideDecorativeIcons}
+        moreLinkDidMount={(arg) => {
+          arg.el.removeAttribute('aria-controls');
+          arg.el.removeAttribute('aria-expanded');
+        }}
         noEventsContent="No hay tareas ni reuniones en este periodo."
       />
     </div>

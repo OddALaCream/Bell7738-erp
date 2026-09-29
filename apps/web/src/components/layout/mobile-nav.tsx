@@ -32,7 +32,7 @@ export function MobileNav() {
             }
           >
             <item.icon className="size-5" aria-hidden="true" />
-            {item.label}
+            <span className="whitespace-nowrap">{item.mobileLabel ?? item.label}</span>
           </NavLink>
         ))}
         <button

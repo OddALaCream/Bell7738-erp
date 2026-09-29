@@ -77,7 +77,7 @@ export function ProjectsListPage() {
           className="max-w-xs"
         />
         <Select value={view ?? 'all'} onValueChange={(v) => updateFilter('view', v === 'all' ? undefined : v)}>
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-48" aria-label="Filtrar proyectos">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -89,7 +89,7 @@ export function ProjectsListPage() {
           </SelectContent>
         </Select>
         <Select value={sort} onValueChange={(v) => updateFilter('sort', v)}>
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-48" aria-label="Ordenar por">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

@@ -178,8 +178,18 @@
 .fc-erp .fc-v-event.fc-event-task-done {
   background-color: var(--color-brand-100);
   border-color: var(--color-brand-300);
+  /* FullCalendar paints the label from this variable on .fc-event-main; setting
+     plain color on the event leaves the default white label on a light tint. */
+  --fc-event-text-color: var(--color-brand-900);
   color: var(--color-brand-900);
-  opacity: 0.75;
+  opacity: 0.9;
+}
+/* FullCalendar fades other-month day numbers to 30% opacity, which fails AA contrast. */
+.fc-erp .fc-day-other .fc-daygrid-day-top {
+  opacity: 1;
+}
+.fc-erp .fc-day-other .fc-daygrid-day-number {
+  color: var(--muted-foreground);
 }
 .fc-erp .fc-event-task-done .fc-event-title {
   text-decoration: line-through;
@@ -188,7 +198,18 @@
 .fc-erp .fc-v-event.fc-event-meeting {
   background-color: var(--secondary);
   border: 1px solid var(--foreground);
+  --fc-event-text-color: var(--secondary-foreground);
   color: var(--secondary-foreground);
+}
+/* The list view sits in a table whose cells size to their content; without wrapping, a long
+   title stretches the whole table past a phone's width and the page scrolls sideways. */
+.fc-erp .fc-list-event-title,
+.fc-erp .fc-list-event .fc-erp-event-content .fc-event-title {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.fc-erp .fc-list-event .fc-erp-event-content {
+  align-items: flex-start;
 }
 .fc-erp .fc-list-event.fc-event-task-done td {
   opacity: 0.6;

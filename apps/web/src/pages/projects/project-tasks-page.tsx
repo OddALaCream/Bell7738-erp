@@ -85,7 +85,7 @@ export function ProjectTasksPage() {
             className="max-w-xs"
           />
           <Select value={status ?? 'ALL'} onValueChange={(v) => updateFilter('status', v === 'ALL' ? undefined : v)}>
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="w-40" aria-label="Estado de la tarea">
               <SelectValue placeholder="Estado" />
             </SelectTrigger>
             <SelectContent>
@@ -96,7 +96,7 @@ export function ProjectTasksPage() {
             </SelectContent>
           </Select>
           <Select value={assigneeId ?? 'ALL'} onValueChange={(v) => updateFilter('assigneeId', v === 'ALL' ? undefined : v)}>
-            <SelectTrigger className="w-44">
+            <SelectTrigger className="w-44" aria-label="Asignado a">
               <SelectValue placeholder="Asignado" />
             </SelectTrigger>
             <SelectContent>

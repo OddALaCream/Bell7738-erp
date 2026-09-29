@@ -24,6 +24,8 @@ import {
 import { AddMemberDialog } from '@/features/projects/add-member-dialog';
 import type { ProjectDetail, ProjectMember, ProjectRole } from '@/types/domain';
 
+import { PROJECT_ROLE_LABEL } from '@/features/projects/labels';
+
 const ROLE_ORDER: ProjectRole[] = ['MANAGER', 'MEMBER', 'VIEWER'];
 
 export function ProjectMembersPage() {
@@ -66,7 +68,7 @@ export function ProjectMembersPage() {
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <Badge variant={member.role === 'MANAGER' ? 'success' : 'secondary'}>{member.role}</Badge>
+                  <Badge variant={member.role === 'MANAGER' ? 'success' : 'secondary'}>{PROJECT_ROLE_LABEL[member.role]}</Badge>
                   {canManage && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -90,7 +92,7 @@ export function ProjectMembersPage() {
                               }
                             }}
                           >
-                            Cambiar a {r}
+                            Cambiar a {PROJECT_ROLE_LABEL[r]}
                           </DropdownMenuItem>
                         ))}
                         <DropdownMenuItem variant="destructive" onSelect={() => setRemoving(member)}>

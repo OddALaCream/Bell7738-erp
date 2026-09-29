@@ -1,7 +1,22 @@
 import { api, http } from '@/lib/api-client';
 import type { ApiCollectionResponse } from '@/lib/api-types';
 
+/** Mirrors apps/api/src/audit/audit-actions.ts; `audit-actions.contract.test.ts` fails if they drift apart. */
 export const AUDIT_ACTIONS = [
+  'AUTH_LOGIN_SUCCEEDED',
+  'AUTH_LOGIN_FAILED',
+  'AUTH_REFRESH_REJECTED',
+  'AUTH_LOGOUT',
+  'AUTH_LOGOUT_ALL',
+  'AUTH_SESSION_REVOKED',
+  'AUTH_PASSWORD_CHANGED',
+  'PROJECT_CREATED',
+  'PROJECT_DELETED',
+  'PROJECT_MEMBER_ADDED',
+  'PROJECT_MEMBER_ROLE_CHANGED',
+  'PROJECT_MEMBER_REMOVED',
+  'DOCUMENT_UPLOADED',
+  'DOCUMENT_DELETED',
   'USER_INVITED',
   'USER_INVITATION_RESENT',
   'USER_INVITATION_REVOKED',

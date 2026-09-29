@@ -15,13 +15,15 @@ export interface NavItem {
   icon: LucideIcon;
   /** Frequent, "your work" destinations shown in the compact mobile bar too. */
   primary?: boolean;
+  /** A shorter label for the five-slot mobile bar, where a long one wraps and misaligns the icons. */
+  mobileLabel?: string;
   /** Shown when the person holds at least one of these (UX only; the API decides). */
   anyOf?: PermissionKey[];
 }
 
 export const mainNavItems: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, primary: true },
-  { to: '/schedule', label: 'Mi cronograma', icon: CalendarClock, primary: true },
+  { to: '/schedule', label: 'Mi cronograma', mobileLabel: 'Cronograma', icon: CalendarClock, primary: true },
   { to: '/projects', label: 'Proyectos', icon: FolderKanban, primary: true },
   { to: '/team', label: 'Equipo', icon: Users, primary: true },
 ];

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { CheckCircle2 } from 'lucide-react';
 import { acceptInvitation } from '@/features/auth/api';
+import { readInvitationToken } from '@/features/invitations/invitation-token';
 import { ApiError } from '@/lib/api-types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,8 +25,13 @@ const schema = z
 type FormValues = z.infer<typeof schema>;
 
 export function AcceptInvitationPage() {
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get('token') ?? '';
+  // Read once, then take the secret out of the address bar and browser history.
+  const [token] = useState(() => readInvitationToken(window.location.hash, window.location.search));
+  useEffect(() => {
+    if (window.location.hash || window.location.search) {
+      window.history.replaceState(window.history.state, '', window.location.pathname);
+    }
+  }, []);
   const [formError, setFormError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 

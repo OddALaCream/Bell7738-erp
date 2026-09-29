@@ -22,6 +22,7 @@ import { useTeam } from '@/features/users/hooks';
 import { fullName } from '@/lib/utils';
 import type { ProjectRole } from '@/types/domain';
 import { useAddProjectMember } from './hooks';
+import { PROJECT_ROLE_LABEL } from './labels';
 
 export function AddMemberDialog({
   open,
@@ -109,9 +110,9 @@ function AddMemberForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="VIEWER">Viewer</SelectItem>
-            <SelectItem value="MEMBER">Member</SelectItem>
-            <SelectItem value="MANAGER">Manager</SelectItem>
+            <SelectItem value="VIEWER">{PROJECT_ROLE_LABEL.VIEWER}</SelectItem>
+            <SelectItem value="MEMBER">{PROJECT_ROLE_LABEL.MEMBER}</SelectItem>
+            <SelectItem value="MANAGER">{PROJECT_ROLE_LABEL.MANAGER}</SelectItem>
           </SelectContent>
         </Select>
 

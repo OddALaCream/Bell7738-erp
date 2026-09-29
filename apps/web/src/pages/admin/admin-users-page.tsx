@@ -122,7 +122,7 @@ export function AdminUsersPage() {
               className="max-w-xs"
             />
             <Select value={status ?? 'ALL'} onValueChange={(v) => updateFilter('status', v === 'ALL' ? undefined : v)}>
-              <SelectTrigger className="w-44">
+              <SelectTrigger className="w-44" aria-label="Estado de la cuenta">
                 <SelectValue placeholder="Estado" />
               </SelectTrigger>
               <SelectContent>
@@ -170,6 +170,13 @@ export function AdminUsersPage() {
                                 {row.isOwner && <ShieldCheck className="size-3.5 text-brand-600" aria-label="Owner" />}
                               </p>
                               <p className="truncate text-xs text-muted-foreground">{row.email}</p>
+                              {row.roles.length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-1 md:hidden">
+                                  {row.roles.map((role) => (
+                                    <RoleBadge key={role.id} name={role.name} color={role.color} />
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </TableCell>

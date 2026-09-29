@@ -36,6 +36,8 @@ export const router = createBrowserRouter([
       </RequireGuest>
     ),
   },
+  // The API's link is `/accept-invitation#token=…`; the older path stays as an alias.
+  { path: '/accept-invitation', element: <AcceptInvitationPage /> },
   { path: '/invitations/accept', element: <AcceptInvitationPage /> },
   {
     element: (

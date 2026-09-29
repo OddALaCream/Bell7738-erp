@@ -5,6 +5,7 @@ import { UserAvatar } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge, RoleBadge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/common/empty-state';
+import { PROJECT_ROLE_LABEL } from '@/features/projects/labels';
 import { ProjectStatusBadge } from '@/features/projects/status-badge';
 import type { ProfileExtras, ProfileProject, ProfileTask } from './api';
 import { formatDateOnly } from '@/lib/dates';
@@ -12,12 +13,6 @@ import { cn, fullName } from '@/lib/utils';
 
 /** What the four cards and the role badges show: the server's lists as they are. */
 export type ProfileContent = ProfileExtras;
-
-const PROJECT_ROLE_LABEL: Record<ProfileProject['role'], string> = {
-  MANAGER: 'Manager',
-  MEMBER: 'Miembro',
-  VIEWER: 'Viewer',
-};
 
 function ProjectList({ projects, empty }: { projects: ProfileProject[]; empty: string }) {
   if (projects.length === 0) return <EmptyState title={empty} className="border-none py-6" />;

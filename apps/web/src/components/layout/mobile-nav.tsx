@@ -4,14 +4,13 @@ import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
 import { useAuth } from '@/features/auth/auth-context';
-import { mainNavItems, visibleAdminItems } from './nav-config';
-
-const bottomItems = mainNavItems.filter((item) => item.primary);
+import { visibleAdminItems, visibleMainItems } from './nav-config';
 
 export function MobileNav() {
   const [moreOpen, setMoreOpen] = useState(false);
   const { can } = useAuth();
   const adminItems = visibleAdminItems(can);
+  const bottomItems = visibleMainItems(can).filter((item) => item.primary);
 
   return (
     <>

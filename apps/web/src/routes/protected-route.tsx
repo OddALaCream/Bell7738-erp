@@ -55,3 +55,12 @@ export function RequirePermission({ anyOf, children }: { anyOf: PermissionKey[];
   }
   return <>{children}</>;
 }
+
+/**
+ * The landing page is the dashboard (docs/RBAC.md: DASHBOARD_VIEW). Without the
+ * permission the person lands on their own schedule instead, which needs none.
+ */
+export function RequireDashboard({ children }: { children: React.ReactNode }) {
+  const { can } = useAuth();
+  return can('DASHBOARD_VIEW') ? <>{children}</> : <Navigate to="/schedule" replace />;
+}

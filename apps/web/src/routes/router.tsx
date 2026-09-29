@@ -1,7 +1,7 @@
 import type { ComponentType } from 'react';
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import { AppShell } from '@/components/layout/app-shell';
-import { RequireAuth, RequireGuest, RequirePermission } from './protected-route';
+import { RequireAuth, RequireDashboard, RequireGuest, RequirePermission } from './protected-route';
 import { LoginPage } from '@/pages/login-page';
 import { AcceptInvitationPage } from '@/pages/accept-invitation-page';
 import { DashboardPage } from '@/pages/dashboard-page';
@@ -51,7 +51,14 @@ export const router = createBrowserRouter([
         // Pathless: a failing screen shows the error inside the shell instead of replacing it.
         errorElement: <RouteErrorPage />,
         children: [
-          { index: true, element: <DashboardPage /> },
+          {
+            index: true,
+            element: (
+              <RequireDashboard>
+                <DashboardPage />
+              </RequireDashboard>
+            ),
+          },
           { path: 'schedule', lazy: lazyPage(() => import('@/pages/schedule-page'), 'SchedulePage') },
           { path: 'projects', element: <ProjectsListPage /> },
           {

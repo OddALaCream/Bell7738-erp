@@ -1,5 +1,9 @@
 # Informe de implementación del frontend V1
 
+> **Documento histórico de la rama `ai/frontend`.** Varias de sus limitaciones (permisos, perfiles,
+> dashboard, subida) se resolvieron en la integración; el estado vigente está en
+> [FINAL_V1_REPORT.md](./FINAL_V1_REPORT.md) y [FRONTEND_BACKEND_GAPS.md](./FRONTEND_BACKEND_GAPS.md).
+
 Rama `ai/frontend`, `apps/web`. No se modificó `apps/api/**`: todo lo que el
 backend no ofrece está en [FRONTEND_BACKEND_GAPS.md](./FRONTEND_BACKEND_GAPS.md)
 con su solución alternativa y el arreglo sugerido.

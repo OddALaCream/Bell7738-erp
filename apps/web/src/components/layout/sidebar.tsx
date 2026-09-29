@@ -8,7 +8,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useAuth } from '@/features/auth/auth-context';
-import { mainNavItems, visibleAdminItems, type NavItem } from './nav-config';
+import { visibleAdminItems, visibleMainItems, type NavItem } from './nav-config';
 import { useSidebar } from './sidebar-context';
 
 export function SidebarTrigger({ className, ...props }: ButtonProps) {
@@ -66,7 +66,7 @@ export function Sidebar() {
         <span className="text-sm font-semibold tracking-tight">{collapsed ? 'ERP' : 'Startup ERP'}</span>
       </div>
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
-        {mainNavItems.map((item) => (
+        {visibleMainItems(can).map((item) => (
           <SidebarLink key={item.to} item={item} collapsed={collapsed} />
         ))}
         {adminItems.length > 0 && (

@@ -2,7 +2,7 @@
 
 ## Estado del documento
 
-Este documento define la arquitectura objetivo de la V1. El scaffold todavía no existe; las rutas y módulos descritos son el contrato para su futura creación, no evidencia de código ya implementado.
+Este documento define la arquitectura de la V1, que ya está implementada en `apps/api`, `apps/web` y `packages/shared`. Donde el código difirió del diseño inicial (dashboard sin endpoint propio, Web Push diferido) esto se indica en el texto.
 
 ## Decisiones principales
 
@@ -27,7 +27,6 @@ flowchart LR
     A --> P[(PostgreSQL)]
     A --> F[(Persistent document volume)]
     A -. optional .-> M[SMTP provider]
-    A -. optional .-> N[Web Push service]
 ```
 
 Caddy termina TLS, sirve el frontend compilado y enruta la API. PostgreSQL no se publica a Internet. El volumen de documentos tampoco se sirve directamente: toda descarga pasa por autorización backend.
@@ -95,7 +94,7 @@ Módulos previstos:
 - `notifications`: notificaciones internas y recordatorios.
 - `activity`: actividad legible por proyecto.
 - `audit`: eventos administrativos append-only.
-- `dashboard`: consultas agregadas para la pantalla inicial.
+- Dashboard: no es un módulo del backend; la pantalla inicial compone lecturas de `schedule`, `projects`, `activity` y `users` (ver [API.md](./API.md)).
 
 Calendario, cronograma, Mi cronograma, equipo y perfiles enriquecidos son consultas o read models sobre módulos existentes. No justifican nuevas tablas ni copias de tareas y reuniones.
 
@@ -252,7 +251,7 @@ La interfaz debe permitir un adaptador posterior para S3, R2 o MinIO sin que pro
 
 La PWA cachea el app shell y assets estáticos con versionado. Por defecto no cachea respuestas autenticadas, documentos ni datos sensibles. V1 no permite mutaciones offline: si no hay conexión, muestra el estado y conserva únicamente borradores no sensibles cuando sea seguro.
 
-La instalación y Web Push son mejoras progresivas. Rechazar permisos o usar un navegador sin soporte no afecta las funciones principales.
+La instalación es una mejora progresiva; rechazarla o usar un navegador sin soporte no afecta las funciones principales. Web Push no se implementa en V1.
 
 ## Configuración
 
@@ -260,7 +259,7 @@ La instalación y Web Push son mejoras progresivas. Rechazar permisos o usar un 
 - Ningún secreto entra al bundle web ni al repositorio.
 - Los valores públicos del frontend se limitan a los que puedan exponerse al navegador.
 - Producción falla al iniciar si faltan secretos o rutas persistentes requeridas.
-- SMTP y Web Push son opcionales; su ausencia se refleja como capacidad deshabilitada, no como fallo global.
+- SMTP es opcional; su ausencia se refleja como capacidad deshabilitada, no como fallo global. Las variables VAPID existen en la configuración pero V1 no las usa.
 
 La lista operativa se mantiene en [DEPLOYMENT.md](./DEPLOYMENT.md).
 

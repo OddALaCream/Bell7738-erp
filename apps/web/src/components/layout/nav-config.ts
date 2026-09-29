@@ -22,7 +22,7 @@ export interface NavItem {
 }
 
 export const mainNavItems: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, primary: true },
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard, primary: true, anyOf: ['DASHBOARD_VIEW'] },
   { to: '/schedule', label: 'Mi cronograma', mobileLabel: 'Cronograma', icon: CalendarClock, primary: true },
   { to: '/projects', label: 'Proyectos', icon: FolderKanban, primary: true },
   { to: '/team', label: 'Equipo', icon: Users, primary: true },
@@ -39,6 +39,14 @@ export const adminNavItems: NavItem[] = [
   { to: '/admin/audit', label: 'Auditoría', icon: ScrollText, anyOf: ['AUDIT_VIEW'] },
 ];
 
+function visible(items: NavItem[], can: Can): NavItem[] {
+  return items.filter((item) => !item.anyOf || canAny(can, ...item.anyOf));
+}
+
+export function visibleMainItems(can: Can): NavItem[] {
+  return visible(mainNavItems, can);
+}
+
 export function visibleAdminItems(can: Can): NavItem[] {
-  return adminNavItems.filter((item) => !item.anyOf || canAny(can, ...item.anyOf));
+  return visible(adminNavItems, can);
 }

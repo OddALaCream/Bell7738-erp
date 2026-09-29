@@ -39,7 +39,7 @@ Los colores de roles son personalizables, pero el texto del rol siempre permanec
 ### Rutas públicas
 
 - `/login`
-- `/invitations/accept`
+- `/accept-invitation` — destino del enlace que genera la API (`#token=…` en el fragmento); `/invitations/accept` se conserva como alias.
 
 ### Aplicación autenticada
 
@@ -315,7 +315,7 @@ La campana del header muestra contador de no leídas y un popover con las recien
 - Acción “Marcar todas como leídas”.
 - Página completa para historial y filtros.
 
-Web Push se ofrece como configuración opcional. Rechazar o retirar permiso no produce banners persistentes ni rompe la campana interna.
+Web Push no forma parte de V1: la interfaz no ofrece suscripción. La campana interna y `/notifications` son el único canal.
 
 ## Estados comunes
 

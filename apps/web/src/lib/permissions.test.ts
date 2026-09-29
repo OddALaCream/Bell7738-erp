@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { canAny, canManageInProject, canWriteInProject, makeCan } from './permissions';
-import { visibleAdminItems } from '@/components/layout/nav-config';
+import { visibleAdminItems, visibleMainItems } from '@/components/layout/nav-config';
 import {
   canCompleteTask,
   canCreateTask,
@@ -101,5 +101,16 @@ describe('task actions', () => {
     expect(canEditTask(task, 'admin', admin, null)).toBe(true);
     expect(canReopenTask(admin, null)).toBe(true);
     expect(canDeleteTask(admin, null)).toBe(true);
+  });
+});
+
+describe('main navigation', () => {
+  it('hides the dashboard entry without DASHBOARD_VIEW but keeps the rest', () => {
+    const items = visibleMainItems(makeCan(['PROJECTS_VIEW_ASSIGNED'])).map((item) => item.to);
+    expect(items).toEqual(['/schedule', '/projects', '/team']);
+  });
+
+  it('shows the dashboard to someone holding DASHBOARD_VIEW', () => {
+    expect(visibleMainItems(makeCan(['DASHBOARD_VIEW'])).map((item) => item.to)).toContain('/');
   });
 });

@@ -206,7 +206,7 @@ No exponer Swagger UI públicamente sin una decisión operativa. El documento Op
 - Al logout se limpia cualquier estado de aplicación sensible controlado por la página.
 - No guardar access/refresh tokens en IndexedDB o Cache Storage.
 - La PWA no ofrece mutaciones offline en V1.
-- Web Push requiere consentimiento explícito y claves VAPID protegidas.
+- Web Push no está implementado en V1. Si se añade, requerirá consentimiento explícito y claves VAPID protegidas.
 - El payload push contiene información mínima y no sensible; al abrirlo, la aplicación vuelve a autorizar y cargar el recurso.
 - Un fallo de push no revierte la notificación interna.
 

@@ -12,7 +12,7 @@ Este documento define el despliegue de V1 en una única VPS Linux y los procedim
 - Caddy como único punto de entrada público.
 - Frontend compilado servido como archivos estáticos.
 - Documentos en un volumen persistente local.
-- SMTP y Web Push opcionales.
+- SMTP opcional. Web Push no forma parte de V1.
 - Sin Redis, BullMQ, microservicios ni orquestador de contenedores.
 
 ## Topología futura
@@ -25,7 +25,6 @@ flowchart TD
     A -->|Private network| P[(PostgreSQL)]
     A -->|Private mount| D[(Documents volume)]
     A -. optional TLS .-> S[SMTP]
-    A -. optional HTTPS .-> V[Web Push]
 ```
 
 Servicios previstos:
@@ -126,13 +125,15 @@ Si el bloque no está completo, la capacidad email queda deshabilitada y el fluj
 - `VAPID_PRIVATE_KEY`
 - `VAPID_SUBJECT`
 
-Si faltan, la UI no ofrece suscripción push. Las notificaciones internas siguen funcionando.
+V1 no implementa Web Push: estas variables se validan pero no se usan y pueden dejarse vacías. Las notificaciones internas son el canal.
 
 ## Gestión de secretos
 
 - Archivo de entorno de producción fuera del repositorio y con permisos restrictivos, o mecanismo equivalente del host.
 - No usar valores secretos como build args del frontend.
 - Sólo variables explícitamente públicas pueden entrar como `VITE_*`.
+- El build de producción llama a la API en el mismo origen (`/api/v1`, servido por Caddy); no hace falta ningún `VITE_*` para desplegar. `VITE_API_BASE_URL` sólo se usa con `vite dev`.
+- Los límites de subida los recibe el frontend de `GET /auth/me`; cambiar `MAX_UPLOAD_BYTES` o `DOCUMENT_ALLOWED_EXTENSIONS` no requiere reconstruir la web (sí subir `MAX_REQUEST_BYTES` de Caddy si corresponde).
 - No copiar `.env` en imágenes.
 - Mantener una plantilla `.env.example` futura con nombres y valores no sensibles.
 - Rotar secretos ante exposición y documentar el efecto sobre sesiones.
@@ -193,7 +194,7 @@ No usar `prisma db push` en producción. No iniciar múltiples APIs compitiendo 
 - que migraciones requeridas estén aplicadas según la estrategia de arranque;
 - acceso básico al directorio de storage persistente.
 
-SMTP y Web Push opcionales aparecen como capacidades degradadas, pero no bloquean readiness. Las respuestas no revelan credenciales, rutas internas ni versiones innecesarias.
+SMTP opcional aparece como capacidad degradada, pero no bloquea readiness. Las respuestas no revelan credenciales, rutas internas ni versiones innecesarias.
 
 Docker healthcheck debe consultar readiness con intervalos y timeouts razonables. Caddy sólo enruta tráfico a una API lista.
 

@@ -5,6 +5,8 @@ import { EmptyState } from '@/components/common/empty-state';
 import { QueryState } from '@/components/common/query-state';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Pagination } from '@/components/common/pagination';
 import { UserAvatar } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -24,7 +26,10 @@ import { TaskFormDialog } from '@/features/tasks/task-form-dialog';
 import { TaskDetailSheet } from '@/features/tasks/task-detail-sheet';
 import { canCompleteTask } from '@/features/tasks/permissions';
 import { useAuth } from '@/features/auth/auth-context';
+import { TASK_STATUS_LABEL } from '@/features/schedule/task-state';
 import type { ProjectDetail, TaskStatus } from '@/types/domain';
+
+const PAGE_SIZE = 50;
 
 export function ProjectTasksPage() {
   const project = useOutletContext<ProjectDetail>();
@@ -35,14 +40,21 @@ export function ProjectTasksPage() {
   const status = (searchParams.get('status') as TaskStatus | null) ?? undefined;
   const assigneeId = searchParams.get('assigneeId') ?? undefined;
   const search = searchParams.get('search') ?? '';
+  const dueFrom = searchParams.get('from') ?? undefined;
+  const dueTo = searchParams.get('to') ?? undefined;
+  const page = Math.max(1, Number(searchParams.get('page')) || 1);
 
   const membersQuery = useProjectMembers(project.id);
   const tasksQuery = useTasks(project.id, {
     status,
     assigneeId,
     search: search || undefined,
-    includeCompleted: status === 'DONE' ? true : undefined,
-    pageSize: 100,
+    // The API hides DONE tasks unless asked; docs/PRODUCT.md keeps them visible, de-emphasized.
+    includeCompleted: true,
+    from: dueFrom,
+    to: dueTo,
+    page,
+    pageSize: PAGE_SIZE,
   });
   const completeTask = useCompleteTask(project.id);
 
@@ -50,6 +62,7 @@ export function ProjectTasksPage() {
     const next = new URLSearchParams(searchParams);
     if (value) next.set(key, value);
     else next.delete(key);
+    if (key !== 'page') next.delete('page');
     setSearchParams(next, { replace: true });
   }
 
@@ -95,6 +108,32 @@ export function ProjectTasksPage() {
               ))}
             </SelectContent>
           </Select>
+          <div className="flex items-center gap-1.5">
+            <Label htmlFor="tasks-from" className="text-xs text-muted-foreground">
+              Vence desde
+            </Label>
+            <Input
+              id="tasks-from"
+              type="date"
+              className="w-36"
+              value={dueFrom ?? ''}
+              max={dueTo}
+              onChange={(e) => updateFilter('from', e.target.value || undefined)}
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Label htmlFor="tasks-to" className="text-xs text-muted-foreground">
+              hasta
+            </Label>
+            <Input
+              id="tasks-to"
+              type="date"
+              className="w-36"
+              value={dueTo ?? ''}
+              min={dueFrom}
+              onChange={(e) => updateFilter('to', e.target.value || undefined)}
+            />
+          </div>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
           <Plus /> Crear tarea
@@ -108,64 +147,73 @@ export function ProjectTasksPage() {
         empty={<EmptyState icon={ListTodo} title="Sin tareas para estos filtros" />}
       >
         {(data) => (
-          <ul className="space-y-2">
-            {data.data.map((task) => {
-              const done = task.status === 'DONE';
-              const overdue = !done && isBeforeToday(task.dueDate);
-              return (
-                <li
-                  key={task.id}
-                  className={cn(
-                    'flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-accent',
-                    done && 'opacity-60',
-                  )}
-                >
-                  <button
-                    type="button"
-                    aria-label={done ? 'Terminada' : 'Marcar como completada'}
-                    disabled={done || !user || !canCompleteTask(task, user.id, user.isOwner, project.viewerCapabilities.role)}
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      try {
-                        await completeTask.mutateAsync(task.id);
-                      } catch {
-                        toast.error('No se pudo completar la tarea.');
-                      }
-                    }}
-                    className="touch-target shrink-0 disabled:cursor-not-allowed"
-                  >
-                    {done ? (
-                      <CheckCircle2 className="size-5 text-brand-600" />
-                    ) : (
-                      <Circle className="size-5 text-muted-foreground" />
+          <div className="space-y-3">
+            <ul className="space-y-2">
+              {data.data.map((task) => {
+                const done = task.status === 'DONE';
+                const overdue = !done && isBeforeToday(task.dueDate);
+                return (
+                  <li
+                    key={task.id}
+                    className={cn(
+                      'flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-accent',
+                      done && 'opacity-60',
                     )}
-                  </button>
-                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => openTask(task.id)}>
-                    <p className={cn('truncate text-sm font-medium', done && 'text-muted-foreground line-through')}>
-                      {task.title}
-                    </p>
-                    <p className={cn('text-xs', overdue ? 'text-destructive' : 'text-muted-foreground')}>
-                      Vence {formatDateOnly(task.dueDate)}
-                      {overdue && ' · atrasada'}
-                    </p>
-                  </button>
-                  <div className="hidden shrink-0 -space-x-2 sm:flex">
-                    {task.assignees.slice(0, 3).map((a) => (
-                      <UserAvatar
-                        key={a.userId}
-                        firstName={a.user.firstName}
-                        lastName={a.user.lastName}
-                        className="size-7 border-2 border-background"
-                      />
-                    ))}
-                  </div>
-                  <div className="hidden shrink-0 sm:block">
-                    <TaskStatusBadge status={task.status} />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+                  >
+                    <button
+                      type="button"
+                      aria-label={done ? 'Terminada' : 'Marcar como completada'}
+                      disabled={done || !user || !canCompleteTask(task, user.id, user.isOwner, project.viewerCapabilities.role)}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          await completeTask.mutateAsync(task.id);
+                        } catch {
+                          toast.error('No se pudo completar la tarea.');
+                        }
+                      }}
+                      className="touch-target shrink-0 disabled:cursor-not-allowed"
+                    >
+                      {done ? (
+                        <CheckCircle2 className="size-5 text-brand-600" />
+                      ) : (
+                        <Circle className="size-5 text-muted-foreground" />
+                      )}
+                    </button>
+                    <button type="button" className="min-w-0 flex-1 text-left" onClick={() => openTask(task.id)}>
+                      <p className={cn('truncate text-sm font-medium', done && 'text-muted-foreground line-through')}>
+                        {task.title}
+                      </p>
+                      <p className={cn('text-xs', overdue ? 'text-destructive' : 'text-muted-foreground')}>
+                        Vence {formatDateOnly(task.dueDate)}
+                        {overdue && ' · atrasada'}
+                        {/* The status badge is hidden on phones; keep the state readable as text there. */}
+                        <span className="sm:hidden"> · {TASK_STATUS_LABEL[task.status]}</span>
+                      </p>
+                    </button>
+                    <div className="hidden shrink-0 -space-x-2 sm:flex">
+                      {task.assignees.slice(0, 3).map((a) => (
+                        <UserAvatar
+                          key={a.userId}
+                          firstName={a.user.firstName}
+                          lastName={a.user.lastName}
+                          className="size-7 border-2 border-background"
+                        />
+                      ))}
+                    </div>
+                    <div className="hidden shrink-0 sm:block">
+                      <TaskStatusBadge status={task.status} />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <Pagination
+              page={page}
+              totalPages={data.meta.totalPages}
+              onPageChange={(next) => updateFilter('page', next > 1 ? String(next) : undefined)}
+            />
+          </div>
         )}
       </QueryState>
 

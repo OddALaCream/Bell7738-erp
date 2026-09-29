@@ -1,0 +1,109 @@
+import { useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import type { ProjectRole } from '@/types/domain';
+import * as api from './api';
+
+export const projectKeys = {
+  all: ['projects'] as const,
+  list: (params: api.ListProjectsParams) => ['projects', 'list', params] as const,
+  detail: (id: string) => ['projects', 'detail', id] as const,
+  members: (id: string) => ['projects', id, 'members'] as const,
+};
+
+export function useProjects(params: api.ListProjectsParams, options: { enabled?: boolean } = {}) {
+  return useQuery({ queryKey: projectKeys.list(params), queryFn: () => api.listProjects(params), enabled: options.enabled });
+}
+
+/**
+ * id → name for the projects the user can see (first 100), for labelling
+ * things that only carry a `projectId`. Pass `enabled: false` until the
+ * labels are actually on screen.
+ */
+export function useProjectNames(enabled = true): Map<string, string> {
+  const query = useProjects({ pageSize: 100 }, { enabled });
+  return useMemo(() => new Map((query.data?.data ?? []).map((project) => [project.id, project.name] as const)), [query.data]);
+}
+
+export function useProject(projectId: string | undefined) {
+  return useQuery({
+    queryKey: projectKeys.detail(projectId ?? ''),
+    queryFn: () => api.getProject(projectId!),
+    enabled: !!projectId,
+  });
+}
+
+export function useCreateProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: api.createProject,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      toast.success('Proyecto creado.');
+    },
+  });
+}
+
+export function useUpdateProject(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof api.updateProject>[1]) => api.updateProject(projectId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      toast.success('Proyecto actualizado.');
+    },
+  });
+}
+
+export function useDeleteProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: api.deleteProject,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      toast.success('Proyecto eliminado.');
+    },
+  });
+}
+
+export function useProjectMembers(projectId: string) {
+  return useQuery({ queryKey: projectKeys.members(projectId), queryFn: () => api.listProjectMembers(projectId) });
+}
+
+export function useAddProjectMember(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: ProjectRole }) =>
+      api.addProjectMember(projectId, userId, role),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.members(projectId) });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'activity'] });
+      toast.success('Miembro añadido.');
+    },
+  });
+}
+
+export function useUpdateProjectMemberRole(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: ProjectRole }) =>
+      api.updateProjectMemberRole(projectId, userId, role),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.members(projectId) });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'activity'] });
+      toast.success('Rol actualizado.');
+    },
+  });
+}
+
+export function useRemoveProjectMember(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => api.removeProjectMember(projectId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.members(projectId) });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'activity'] });
+      toast.success('Miembro retirado.');
+    },
+  });
+}
